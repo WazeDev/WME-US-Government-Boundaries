@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         WME US Government Boundaries
+// @name         WME US Government Boundaries (beta)
 // @namespace    https://greasyfork.org/users/45389
 // @version      0.4.7
 // @description  Adds a layer to display US (federal, state, and/or local) boundaries.
@@ -31,7 +31,7 @@
     var _scriptVersion = GM_info.script.version;
     var _scriptVersionChanges = [
         GM_info.script.name + '\nv' + _scriptVersion + '\n\nWhat\'s New\n------------------------------\n',
-        '\n- Update for new WME layers menu.'
+        '\n- Restored zip->city lookup.'
     ].join('');
     var _mapLayer = null;
     var _settings = {};
