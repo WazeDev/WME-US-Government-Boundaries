@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         WME US Government Boundaries (beta)
 // @namespace    https://greasyfork.org/users/45389
-// @version      0.5.1
+// @version      0.5.2
 // @description  Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author       MapOMatic
 // @include      /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
+// @require      https://cdnjs.cloudflare.com/ajax/libs/Turf.js/4.7.3/turf.min.js
 // @grant        GM_xmlhttpRequest
 // @license      GNU GPLv3
 // @connect      census.gov
@@ -208,27 +209,42 @@
         }
         return new OpenLayers.Geometry.LinearRing(pnts);
     }
-    function getFeatureScreenIntersection(feature) {
+    function getLabelPoints(feature) {
         var e = W.map.getExtent();
         var screenPoly = turf.polygon([[[e.left, e.top], [e.right, e.top], [e.right, e.bottom], [e.left, e.bottom], [e.left, e.top]]]);
         // The intersect function doesn't seem to like holes in polygons, so assume the first ring is the outer boundary and ignore any holes.
         var featurePoly = turf.polygon([getRingArrayFromFeature(feature)[0]]);
         var intersection = turf.intersect(screenPoly, featurePoly);
+        var screenArea = turf.area(screenPoly);
 
         if (intersection && intersection.geometry && intersection.geometry.coordinates) {
-            if (intersection.geometry.type === 'Polygon') {
-                var center = turf.centerOfMass(intersection).geometry.coordinates;
-                var pt = new OpenLayers.Geometry.Point(center[0], center[1]);
-                return [new OpenLayers.Feature.Vector(pt, feature.attributes)];
-            } else if (intersection.geometry.type === 'MultiPolygon') {
-                var features = [];
-                intersection.geometry.coordinates.forEach(function(polyData) {
-                    var center = turf.centerOfMass(turf.polygon(polyData)).geometry.coordinates;
-                    var pt = new OpenLayers.Geometry.Point(center[0], center[1]);
-                    features.push(new OpenLayers.Feature.Vector(pt, feature.attributes));
-                });
-                return features;
+            var turfPt = turf.centerOfMass(intersection);
+            if (!turf.inside(turfPt,intersection)) {
+                turfPt = turf.pointOnSurface(intersection);
             }
+            var turfCoords = turfPt.geometry.coordinates;
+            var pt = new OpenLayers.Geometry.Point(turfCoords[0], turfCoords[1]);
+            var attributes = feature.attributes;
+            attributes.label = feature.attributes.name; //featureArea/screenArea;
+            return [new OpenLayers.Feature.Vector(pt, attributes)];
+
+            // if (intersection.geometry.type === 'Polygon') {
+            //     var featureArea = turf.area(intersection);
+            //     if (featureArea/screenArea < 0.1) return null;
+            //     var center = turf.centerOfMass(intersection).geometry.coordinates;
+            //     var pt = new OpenLayers.Geometry.Point(center[0], center[1]);
+            //     var attributes = feature.attributes;
+            //     attributes.label = featureArea/screenArea;
+            //     return [new OpenLayers.Feature.Vector(pt, attributes)];
+            // } else if (intersection.geometry.type === 'MultiPolygon') {
+            //     var features = [];
+            //     intersection.geometry.coordinates.forEach(function(polyData) {
+            //         var center = turf.centerOfMass(turf.polygon(polyData)).geometry.coordinates;
+            //         var pt = new OpenLayers.Geometry.Point(center[0], center[1]);
+            //         features.push(new OpenLayers.Feature.Vector(pt, feature.attributes));
+            //     });
+            //     return features;
+            // }
         }
     }
 
@@ -257,10 +273,10 @@
                     if (!context.cancel) {
                         var feature = arcgisFeatureToOLFeature(boundary, attributes);
                         layer.addFeatures([feature]);
-                        var labels = getFeatureScreenIntersection(feature);
+                        var labels = getLabelPoints(feature);
                         if (labels) {
                             labels.forEach(function(labelFeature) {
-                                labelFeature.attributes.label = boundary.attributes[labelField];
+                                //labelFeature.attributes.label = boundary.attributes[labelField];
                                 labelFeature.attributes.type='label';
                             });
                             layer.addFeatures(labels);
@@ -590,8 +606,4 @@
 
         buildLayerItem(checked);
     }
-
-
-
-
 })();
