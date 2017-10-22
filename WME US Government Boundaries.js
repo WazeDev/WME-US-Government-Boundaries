@@ -1,11 +1,10 @@
 // ==UserScript==
 // @name         WME US Government Boundaries (beta)
 // @namespace    https://greasyfork.org/users/45389
-// @version      0.5.0
+// @version      0.5.1
 // @description  Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author       MapOMatic
 // @include      /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
-// @require      https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js?version=203355
 // @grant        GM_xmlhttpRequest
 // @license      GNU GPLv3
 // @connect      census.gov
@@ -98,6 +97,7 @@
     }
 
     function appendCityToZip(html, context) {
+        console.log(html);
         if (!context.cancel) {
             var city = /<City>(.*?)<\/City>/.exec(html);
             if (city.length === 2) {
@@ -120,42 +120,114 @@
         var url;
         var $div, $span;
         var i;
+        if (context.cancel) return;
         if (_zipsLayer && _zipsLayer.visibility) {
             for (i=0;i<_zipsLayer.features.length;i++){
                 feature = _zipsLayer.features[i];
-                if(feature.geometry.containsPoint(mapCenter)) {
-                    label = feature.attributes.label;
-                    text = 'ZIP: ' + label;
-                    //color = _colorLookup['IN-' + feature.attributes.name].fillColor;
-                    $('<span>', {id:'zip-text'}).css({display:'inline-block'})
+
+                if(feature.geometry.containsPoint && feature.geometry.containsPoint(mapCenter)) {
+                    text = feature.attributes.name;
+                    url = 'https://tools.usps.com/go/ZipLookupResultsAction!input.action?resultMode=2&companyName=&address1=&address2=&city=&state=Select&urbanCode=&postalCode=' + text + '&zip=';
+                    $('<span>', {id:'zip-text'}).empty().css({display:'inline-block'})
                         .append(
                         $('<a>', {href:url, target:'__blank', title:'Look up USPS zip code'})
                         .text(text)
                         .css({color:'white',display:'inline-block'})
                     )
                         .appendTo($('#zip-boundary'));
-                    GM_xmlhttpRequest({
-                        url: 'https://wazex.us/zips/ziptocity.php?zip=' + label,
-                        context: context,
-                        method: 'GET',
-                        onload: function(res) {appendCityToZip(res.responseText, res.context);}
-                    });
+                    if (!context.cancel) {
+                        GM_xmlhttpRequest({
+                            url: 'https://wazex.us/zips/ziptocity.php?zip=' + text,
+                            context: context,
+                            method: 'GET',
+                            onload: function(res) {appendCityToZip(res.responseText, res.context);}
+                        });
+                    }
                 }
             }
         }
         if (_countiesLayer && _countiesLayer.visibility) {
             for (i=0;i<_countiesLayer.features.length;i++){
                 feature = _countiesLayer.features[i];
-                if(feature.geometry.containsPoint(mapCenter)) {
-                    label = feature.attributes.label;
-                    var match = label.match(/ County$/);
-                    if (match) {
-                        label = label.substr(0, match.index);
-                    }
+                if(feature.attributes.type !== 'label' && feature.geometry.containsPoint(mapCenter)) {
+                    //debugger;
+                    label = feature.attributes.name;
+                    // var match = label.match(/ County$/);
+                    // if (match) {
+                    //     label = label.substr(0, match.index);
+                    // }
                     $('<span>', {id:'county-text'}).css({display:'inline-block'})
-                        .text('County: ' + label)
+                        .text(label)
                         .appendTo($('#county-boundary'));
                 }
+            }
+        }
+    }
+
+    function arcgisFeatureToOLFeature(feature, attributes) {
+        var rings = [];
+        feature.geometry.rings.forEach(function(ringIn) {
+            var pnts= [];
+            for(var i=0;i<ringIn.length;i++){
+                pnts.push(new OpenLayers.Geometry.Point(ringIn[i][0], ringIn[i][1]));
+            }
+            rings.push(new OpenLayers.Geometry.LinearRing(pnts));
+        });
+        var polygon = new OpenLayers.Geometry.Polygon(rings);
+        return new OpenLayers.Feature.Vector(polygon, attributes);
+    }
+
+    // function arcgisFeatureToGeoJSONFeature(feature, attributes) {
+    //     var rings = [];
+    //     feature.geometry.rings.forEach(function(ringIn) {
+    //         var pnts= [];
+    //         for(var i=0;i<ringIn.length;i++){
+    //             pnts.push(new OpenLayers.Geometry.Point(ringIn[i][0], ringIn[i][1]));
+    //         }
+    //         rings.push(new OpenLayers.Geometry.LinearRing(pnts));
+    //     });
+    //     var polygon = new OpenLayers.Geometry.Polygon(rings);
+    //     return new OpenLayers.Feature.Vector(polygon, attributes);
+    // }
+
+    function getRingArrayFromFeature(feature) {
+        var rings = [];
+        feature.geometry.components.forEach(function(featureRing) {
+            var ring = [];
+            featureRing.components.forEach(function(pt) {
+                ring.push([pt.x, pt.y]);
+            });
+            rings.push(ring);
+        });
+        return rings;
+    }
+    function geoJsonRingToOLRing(ring) {
+        var pnts= [];
+        for(var i=0;i<ring.length;i++){
+            pnts.push(new OpenLayers.Geometry.Point(ring[i][0], ring[i][1]));
+        }
+        return new OpenLayers.Geometry.LinearRing(pnts);
+    }
+    function getFeatureScreenIntersection(feature) {
+        var e = W.map.getExtent();
+        var screenPoly = turf.polygon([[[e.left, e.top], [e.right, e.top], [e.right, e.bottom], [e.left, e.bottom], [e.left, e.top]]]);
+        // The intersect function doesn't seem to like holes in polygons, so assume the first ring is the outer boundary and ignore any holes.
+        var featurePoly = turf.polygon([getRingArrayFromFeature(feature)[0]]);
+        var intersection = turf.intersect(screenPoly, featurePoly);
+
+        if (intersection && intersection.geometry && intersection.geometry.coordinates) {
+            if (intersection.geometry.type === 'Polygon') {
+                var center = turf.centerOfMass(intersection).geometry.coordinates;
+                var pt = new OpenLayers.Geometry.Point(center[0], center[1]);
+                return [new OpenLayers.Feature.Vector(pt, feature.attributes)];
+            } else if (intersection.geometry.type === 'MultiPolygon') {
+                var features = [];
+                intersection.geometry.coordinates.forEach(function(polyData) {
+                    var center = turf.centerOfMass(turf.polygon(polyData)).geometry.coordinates;
+                    var pt = new OpenLayers.Geometry.Point(center[0], center[1]);
+                    features.push(new OpenLayers.Feature.Vector(pt, feature.attributes));
+                });
+                return features;
             }
         }
     }
@@ -178,23 +250,21 @@
                 boundaries.forEach(function(boundary) {
                     var attributes = {
                         name: boundary.attributes[nameField],
+                        label: '',
                         type: type
                     };
-                    if (labelField) attributes.label = boundary.attributes[labelField];
-
-                    var rings = [];
-                    boundary.geometry.rings.forEach(function(ringIn) {
-                        var pnts= [];
-                        for(var i=0;i<ringIn.length;i++){
-                            pnts.push(new OpenLayers.Geometry.Point(ringIn[i][0], ringIn[i][1]));
-                        }
-                        rings.push(new OpenLayers.Geometry.LinearRing(pnts));
-                    });
-                    var polygon = new OpenLayers.Geometry.Polygon(rings);
-                    var feature = new OpenLayers.Feature.Vector(polygon,attributes);
 
                     if (!context.cancel) {
+                        var feature = arcgisFeatureToOLFeature(boundary, attributes);
                         layer.addFeatures([feature]);
+                        var labels = getFeatureScreenIntersection(feature);
+                        if (labels) {
+                            labels.forEach(function(labelFeature) {
+                                labelFeature.attributes.label = boundary.attributes[labelField];
+                                labelFeature.attributes.type='label';
+                            });
+                            layer.addFeatures(labels);
+                        }
                     }
                 });
             }
@@ -284,6 +354,7 @@
 
     var _zipsStyle;
     var _countiesStyle;
+    var _labelsStyle;
     function initLayer(){
         _zipsStyle = {
             strokeColor: '#FF0000',
@@ -291,45 +362,38 @@
             strokeWidth: 3,
             strokeDashstyle: 'solid',
             fillOpacity: 0,
-            label : "${label}",
             fontSize: "16px",
-            fontFamily: "Courier New, monospace",
+            fontFamily: "Arial",
             fontWeight: "bold",
             fontColor: "red",
-            //labelAlign: "${align}",
-            //labelXOffset: "${xOffset}",
-            //labelYOffset: "${yOffset}",
+            label: '${label}',
+            labelYOffset: "-20",
             labelOutlineColor: "white",
             labelOutlineWidth: 2
         };
-        _countiesStyle = {
+        _countiesStyle =  {
             strokeColor: 'pink',
             strokeOpacity: 1,
             strokeWidth: 6,
             strokeDashstyle: 'solid',
             fillOpacity: 0,
-            //label : "${label}",
-            //fontSize: "16px",
-            //fontFamily: "Courier New, monospace",
-            //fontWeight: "bold",
-            //fontColor: "orange",
-            //labelAlign: "${align}",
-            //labelXOffset: "${xOffset}",
-            //labelYOffset: "${yOffset}",
+            fontSize: "18px",
+            fontFamily: "Arial",
+            fontWeight: "bold",
+            fontColor: "pink",
+            label: '${label}',
             labelOutlineColor: "black",
-            labelOutlineWidth: 1
+            labelOutlineWidth: 2
         };
 
         _zipsLayer = new OpenLayers.Layer.Vector("US Gov't Boundaries - Zip Codes", {
             uniqueName: "__WMEUSBoundaries_Zips",
-            displayInLayerSwitcher: true,
             styleMap: new OpenLayers.StyleMap({
                 default: _zipsStyle,
             })
         });
         _countiesLayer = new OpenLayers.Layer.Vector("US Gov't Boundaries - Counties", {
             uniqueName: "__WMEUSBoundaries_Counties",
-            displayInLayerSwitcher: true,
             styleMap: new OpenLayers.StyleMap({
                 default: _countiesStyle,
             })
