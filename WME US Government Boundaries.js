@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME US Government Boundaries
 // @namespace    https://greasyfork.org/users/45389
-// @version      0.4.7
+// @version      0.4.8
 // @description  Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author       MapOMatic
 // @include      /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -104,16 +104,11 @@
         return url;
     }
 
-    function appendCityToZip(html, token) {
-        if (_lastCallToken === token) {
-            var city = /<City>(.*?)<\/City>/.exec(html);
-            if (city.length === 2) {
-                city = city[1];
-                var state =  /<State>(.*?)<\/State>/.exec(html);
-                if (state.length === 2) {
-                    state = state[1];
-                    $('#zip-text').append(' (' + city + ', ' + state + ')');
-                }
+    function appendCityToZip(res, context) {
+        if (!context.cancel) {
+            var json = $.parseJSON(res);
+            if (!res.error) {
+                $('#zip-text').append(' (' + json.city + ', ' + json.state + ')');
             }
         }
     }
@@ -136,7 +131,7 @@
                     url = 'https://tools.usps.com/go/ZipLookupResultsAction!input.action?resultMode=2&companyName=&address1=&address2=&city=&state=Select&urbanCode=&postalCode=' + num + '&zip=';
                     $span.append($('<a>', {href:url, target:'__blank', title:'Look up USPS zip code'}).text(text).css({color:'white',display:'inline-block'}));
                     GM_xmlhttpRequest({
-                        url: 'https://wazex.us/zips/ziptocity.php?zip=' + num,
+                        url: 'https://wazex.us/zips/ziptocity2.php?zip=' + num,
                         context: {token:token},
                         method: 'GET',
                         onload: function(res) {appendCityToZip(res.responseText, res.context.token);}
