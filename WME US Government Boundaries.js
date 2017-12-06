@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME US Government Boundaries (beta)
 // @namespace    https://greasyfork.org/users/45389
-// @version      0.5.2
+// @version      0.5.3
 // @description  Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author       MapOMatic
 // @include      /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -97,17 +97,11 @@
         return url;
     }
 
-    function appendCityToZip(html, context) {
-        console.log(html);
+    function appendCityToZip(res, context) {
         if (!context.cancel) {
-            var city = /<City>(.*?)<\/City>/.exec(html);
-            if (city.length === 2) {
-                city = city[1];
-                var state =  /<State>(.*?)<\/State>/.exec(html);
-                if (state.length === 2) {
-                    state = state[1];
-                    $('#zip-text').append(' (' + city + ', ' + state + ')');
-                }
+            var json = $.parseJSON(res);
+            if (!res.error) {
+                $('#zip-text').append(' (' + json.city + ', ' + json.state + ')');
             }
         }
     }
@@ -138,7 +132,7 @@
                         .appendTo($('#zip-boundary'));
                     if (!context.cancel) {
                         GM_xmlhttpRequest({
-                            url: 'https://wazex.us/zips/ziptocity.php?zip=' + text,
+                            url: 'https://wazex.us/zips/ziptocity2.php?zip=' + text,
                             context: context,
                             method: 'GET',
                             onload: function(res) {appendCityToZip(res.responseText, res.context);}
