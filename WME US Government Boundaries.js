@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME US Government Boundaries (beta)
 // @namespace    https://greasyfork.org/users/45389
-// @version      0.5.3
+// @version      0.5.4
 // @description  Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author       MapOMatic
 // @include      /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -22,6 +22,7 @@
 /* global Waze */
 /* global Components */
 /* global I18n */
+/* global turf */
 
 (function() {
     'use strict';
@@ -41,67 +42,67 @@
     var _countiesLayer;
     var _settings = {};
 
-    function getStateNameFromAbbr(stateAbbr) {
-        for (var stateName in _statesHash) {
-            if (_statesHash[stateName] == stateAbbr) return stateName;
-        }
-    }
-
     function log(message, level) {
         if (message && (!level || (level <= DEBUG_LEVEL))) {
             console.log('US Boundaries: ', message);
         }
     }
 
+    // Recursively checks the settings object and fills in missing properties from the default settings object.
+    function checkSettings(obj, defaultObj) {
+        Object.keys(defaultObj).forEach(key => {
+            if (!obj.hasOwnProperty(key)) {
+                obj[key] = defaultObj[key];
+            } else if (defaultObj[key] && (defaultObj[key].constructor === {}.constructor)) {
+                checkSettings(obj[key], defaultObj[key]);
+            }
+        });
+    }
+
     function loadSettings() {
         var loadedSettings = $.parseJSON(localStorage.getItem(SETTINGS_STORE_NAME));
         var defaultSettings = {
             lastVersion:null,
-            layerOpacity: 0.6,
-            zipsVisible:true,
-            zipsColor:'#F00',
-            zipsWidth:3,
-            countiesVisible:true,
-            countiesColor:'A00',
-            countiesWidth: 3
-        };
-        _settings = loadedSettings ? loadedSettings : defaultSettings;
-        for (var prop in defaultSettings) {
-            if (!_settings.hasOwnProperty(prop)) {
-                _settings[prop] = defaultSettings[prop];
+            layers: {
+                zips: { visible: true, dynamicLabels: false, junk:123.42 },
+                counties: { visible: true, dynamicLabels: true }
             }
+        };
+        if (loadedSettings) {
+            _settings = loadedSettings;
+            checkSettings(_settings, defaultSettings);
+        } else {
+            _settings = defaultSettings;
         }
     }
 
     function saveSettings() {
         if (localStorage) {
             _settings.lastVersion = _scriptVersion;
-            _settings.zipsVisible = _zipsLayer.visibility;
-            _settings.countiesVisible = _countiesLayer.visibility;
+            _settings.layers.zips.visible = _zipsLayer.visibility;
+            _settings.layers.counties.visible = _countiesLayer.visibility;
             localStorage.setItem(SETTINGS_STORE_NAME, JSON.stringify(_settings));
             log('Settings saved', 1);
         }
     }
 
     function getUrl(baseUrl, extent, zoom, outFields) {
-        var whereParts = [];
         var geometry = { xmin:extent.left, ymin:extent.bottom, xmax:extent.right, ymax:extent.top, spatialReference: {wkid: 102100, latestWkid: 3857} };
         var geometryStr = JSON.stringify(geometry);
-        var offsets = [40,20,10,4,2,1,0.5,0.25,0.125,0.0625,0.03125];
         var url = baseUrl + 'query?geometry=' + encodeURIComponent(geometryStr);
         url += '&returnGeometry=true';
-        //url += '&maxAllowableOffset=' + offsets[zoom];
         url += '&outFields=' + encodeURIComponent(outFields.join(','));
         url += '&quantizationParameters={tolerance:100}';
         url += '&spatialRel=esriSpatialRelIntersects&geometryType=esriGeometryEnvelope&inSR=102100&outSR=3857&f=json';
         return url;
     }
 
-    function appendCityToZip(res, context) {
+    var _zipCities = {};
+    function appendCityToZip(zip, cityState, context) {
         if (!context.cancel) {
-            var json = $.parseJSON(res);
-            if (!res.error) {
-                $('#zip-text').append(' (' + json.city + ', ' + json.state + ')');
+            if (!cityState.error) {
+                _zipCities[zip] = cityState;
+                $('#zip-text').append(' (' + cityState.city + ', ' + cityState.state + ')');
             }
         }
     }
@@ -109,11 +110,9 @@
     function updateNameDisplay(context){
         var mapCenter = new OpenLayers.Geometry.Point(W.map.center.lon,W.map.center.lat);
         var feature;
-        var color;
         var text = '';
         var label;
         var url;
-        var $div, $span;
         var i;
         if (context.cancel) return;
         if (_zipsLayer && _zipsLayer.visibility) {
@@ -123,20 +122,22 @@
                 if(feature.geometry.containsPoint && feature.geometry.containsPoint(mapCenter)) {
                     text = feature.attributes.name;
                     url = 'https://tools.usps.com/go/ZipLookupResultsAction!input.action?resultMode=2&companyName=&address1=&address2=&city=&state=Select&urbanCode=&postalCode=' + text + '&zip=';
-                    $('<span>', {id:'zip-text'}).empty().css({display:'inline-block'})
-                        .append(
+                    $('<span>', {id:'zip-text'}).empty().css({display:'inline-block'}).append(
                         $('<a>', {href:url, target:'__blank', title:'Look up USPS zip code'})
                         .text(text)
                         .css({color:'white',display:'inline-block'})
-                    )
-                        .appendTo($('#zip-boundary'));
+                    ).appendTo($('#zip-boundary'));
                     if (!context.cancel) {
-                        GM_xmlhttpRequest({
-                            url: 'https://wazex.us/zips/ziptocity2.php?zip=' + text,
-                            context: context,
-                            method: 'GET',
-                            onload: function(res) {appendCityToZip(res.responseText, res.context);}
-                        });
+                        if (_zipCities[text]) {
+                            appendCityToZip(text, _zipCities[text], context);
+                        } else {
+                            GM_xmlhttpRequest({
+                                url: 'https://wazex.us/zips/ziptocity2.php?zip=' + text,
+                                context: context,
+                                method: 'GET',
+                                onload: function(res) {appendCityToZip(text, $.parseJSON(res.responseText), res.context);}
+                            });
+                        }
                     }
                 }
             }
@@ -145,12 +146,7 @@
             for (i=0;i<_countiesLayer.features.length;i++){
                 feature = _countiesLayer.features[i];
                 if(feature.attributes.type !== 'label' && feature.geometry.containsPoint(mapCenter)) {
-                    //debugger;
                     label = feature.attributes.name;
-                    // var match = label.match(/ County$/);
-                    // if (match) {
-                    //     label = label.substr(0, match.index);
-                    // }
                     $('<span>', {id:'county-text'}).css({display:'inline-block'})
                         .text(label)
                         .appendTo($('#county-boundary'));
@@ -172,19 +168,6 @@
         return new OpenLayers.Feature.Vector(polygon, attributes);
     }
 
-    // function arcgisFeatureToGeoJSONFeature(feature, attributes) {
-    //     var rings = [];
-    //     feature.geometry.rings.forEach(function(ringIn) {
-    //         var pnts= [];
-    //         for(var i=0;i<ringIn.length;i++){
-    //             pnts.push(new OpenLayers.Geometry.Point(ringIn[i][0], ringIn[i][1]));
-    //         }
-    //         rings.push(new OpenLayers.Geometry.LinearRing(pnts));
-    //     });
-    //     var polygon = new OpenLayers.Geometry.Polygon(rings);
-    //     return new OpenLayers.Feature.Vector(polygon, attributes);
-    // }
-
     function getRingArrayFromFeature(feature) {
         var rings = [];
         feature.geometry.components.forEach(function(featureRing) {
@@ -196,20 +179,13 @@
         });
         return rings;
     }
-    function geoJsonRingToOLRing(ring) {
-        var pnts= [];
-        for(var i=0;i<ring.length;i++){
-            pnts.push(new OpenLayers.Geometry.Point(ring[i][0], ring[i][1]));
-        }
-        return new OpenLayers.Geometry.LinearRing(pnts);
-    }
+
     function getLabelPoints(feature) {
         var e = W.map.getExtent();
         var screenPoly = turf.polygon([[[e.left, e.top], [e.right, e.top], [e.right, e.bottom], [e.left, e.bottom], [e.left, e.top]]]);
         // The intersect function doesn't seem to like holes in polygons, so assume the first ring is the outer boundary and ignore any holes.
         var featurePoly = turf.polygon([getRingArrayFromFeature(feature)[0]]);
         var intersection = turf.intersect(screenPoly, featurePoly);
-        var screenArea = turf.area(screenPoly);
 
         if (intersection && intersection.geometry && intersection.geometry.coordinates) {
             var turfPt = turf.centerOfMass(intersection);
@@ -221,59 +197,46 @@
             var attributes = feature.attributes;
             attributes.label = feature.attributes.name; //featureArea/screenArea;
             return [new OpenLayers.Feature.Vector(pt, attributes)];
-
-            // if (intersection.geometry.type === 'Polygon') {
-            //     var featureArea = turf.area(intersection);
-            //     if (featureArea/screenArea < 0.1) return null;
-            //     var center = turf.centerOfMass(intersection).geometry.coordinates;
-            //     var pt = new OpenLayers.Geometry.Point(center[0], center[1]);
-            //     var attributes = feature.attributes;
-            //     attributes.label = featureArea/screenArea;
-            //     return [new OpenLayers.Feature.Vector(pt, attributes)];
-            // } else if (intersection.geometry.type === 'MultiPolygon') {
-            //     var features = [];
-            //     intersection.geometry.coordinates.forEach(function(polyData) {
-            //         var center = turf.centerOfMass(turf.polygon(polyData)).geometry.coordinates;
-            //         var pt = new OpenLayers.Geometry.Point(center[0], center[1]);
-            //         features.push(new OpenLayers.Feature.Vector(pt, feature.attributes));
-            //     });
-            //     return features;
-            // }
         }
     }
 
     function processBoundaries(boundaries, context, type, nameField, labelField) {
         var layer;
+        var layerSettings;
+        switch(type) {
+            case 'zip':
+                layerSettings = _settings.layers.zips;
+                layer = _zipsLayer;
+                break;
+            case 'county':
+                layerSettings = _settings.layers.counties;
+                layer = _countiesLayer;
+                break;
+        }
 
-        if (context.cancel ||
-            !_settings.zipsVisible && type === 'zip' ||
-            !_settings.countiesVisible && type === 'county') {
+        if (context.cancel || !layerSettings.visible) {
             // do nothing
         } else {
-            if (type==='zip') {
-                layer = _zipsLayer;
-            } else if (type==='county') {
-                layer = _countiesLayer;
-            }
             layer.removeAllFeatures();
             if (!context.cancel) {
                 boundaries.forEach(function(boundary) {
                     var attributes = {
                         name: boundary.attributes[nameField],
-                        label: '',
+                        label: layerSettings.dynamicLabels ? '' : boundary.attributes[nameField],
                         type: type
                     };
 
                     if (!context.cancel) {
                         var feature = arcgisFeatureToOLFeature(boundary, attributes);
                         layer.addFeatures([feature]);
-                        var labels = getLabelPoints(feature);
-                        if (labels) {
-                            labels.forEach(function(labelFeature) {
-                                //labelFeature.attributes.label = boundary.attributes[labelField];
-                                labelFeature.attributes.type='label';
-                            });
-                            layer.addFeatures(labels);
+                        if (layerSettings.dynamicLabels) {
+                            var labels = getLabelPoints(feature);
+                            if (labels) {
+                                labels.forEach(function(labelFeature) {
+                                    labelFeature.attributes.type='label';
+                                });
+                                layer.addFeatures(labels);
+                            }
                         }
                     }
                 });
@@ -307,7 +270,7 @@
             $('<div>', {id:'county-boundary', class:"us-boundary-region"}).css({color:'white', float:'left', marginLeft:'10px'}),
             $('<div>', {id:'zip-boundary', class:"us-boundary-region"}).css({color:'white', float:'left', marginLeft:'10px'})
         );
-        if (_settings.zipsVisible) {
+        if (_settings.layers.zips.visible) {
             url = getUrl(ZIPS_LAYER_URL, extent, zoom, ['ZCTA5']);
             context.callCount++;
             $.ajax({
@@ -318,7 +281,7 @@
                 success: function(data) {processBoundaries($.parseJSON(data).features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
             });
         }
-        if (_settings.countiesVisible) {
+        if (_settings.layers.counties.visible) {
             url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME']);
             context.callCount++;
             $.ajax({
@@ -332,12 +295,12 @@
     }
 
     function onZipsLayerVisibilityChanged(evt) {
-        _settings.zipsVisible = _zipsLayer.visibility;
+        _settings.layers.zips.visible = _zipsLayer.visibility;
         saveSettings();
         fetchBoundaries();
     }
     function onCountiesLayerVisibilityChanged(evt) {
-        _settings.countiesVisible = _countiesLayer.visibility;
+        _settings.layers.counties.visible = _countiesLayer.visibility;
         saveSettings();
         fetchBoundaries();
     }
@@ -364,7 +327,6 @@
 
     var _zipsStyle;
     var _countiesStyle;
-    var _labelsStyle;
     function initLayer(){
         _zipsStyle = {
             strokeColor: '#FF0000',
@@ -399,13 +361,13 @@
         _zipsLayer = new OpenLayers.Layer.Vector("US Gov't Boundaries - Zip Codes", {
             uniqueName: "__WMEUSBoundaries_Zips",
             styleMap: new OpenLayers.StyleMap({
-                default: _zipsStyle,
+                default: _zipsStyle
             })
         });
         _countiesLayer = new OpenLayers.Layer.Vector("US Gov't Boundaries - Counties", {
             uniqueName: "__WMEUSBoundaries_Counties",
             styleMap: new OpenLayers.StyleMap({
-                default: _countiesStyle,
+                default: _countiesStyle
             })
         });
 
@@ -413,8 +375,8 @@
         _zipsLayer.setOpacity(0.6);
         _countiesLayer.setOpacity(0.6);
 
-        _zipsLayer.setVisibility(_settings.zipsVisible);
-        _countiesLayer.setVisibility(_settings.countiesVisible);
+        _zipsLayer.setVisibility(_settings.layers.zips.visible);
+        _countiesLayer.setVisibility(_settings.layers.counties.visible);
 
         Waze.map.addLayers([_countiesLayer, _zipsLayer]);
 
@@ -426,8 +388,8 @@
         },true);
 
         // Add the layer checkbox to the Layers menu.
-        AddLayerCheckbox("display", "Zip Codes", _settings.zipsVisible, onZipsLayerToggleChanged);
-        AddLayerCheckbox("display", "Counties", _settings.countiesVisible, onCountiesLayerToggleChanged);
+        AddLayerCheckbox("display", "Zip Codes", _settings.layers.zips.visible, onZipsLayerToggleChanged);
+        AddLayerCheckbox("display", "Counties", _settings.layers.counties.visible, onCountiesLayerToggleChanged);
     }
 
     function appendTab(name, content) {
@@ -453,7 +415,7 @@
                 .append($('<a/>')
                         .attr({
                 'href': '#sidepanel-' + idName,
-                'data-toggle': 'tab',
+                'data-toggle': 'tab'
             })
                         .text(name));
             $content = $('<div/>')
@@ -468,36 +430,37 @@
 
     function initTab() {
         var $content = $('<div>').append(
-            $('<div>').text('Under construction...')
-            // $('<div>').append(
-            //     $('<input>', {type:'checkbox', id:'usgb-show-zips'}),
-            //     $('<label>', {for:'usgb-show-zips'}).text('Zip codes')
-            // ),
-            // $('<div>').append(
-            //     $('<input>', {type:'checkbox', id:'usgb-show-counties'}),
-            //     $('<label>', {for:'usgb-show-counties'}).text('Counties')
-            // )
+            $('<fieldset>', {style:'border:1px solid silver;padding:8px;border-radius:4px;'}).append(
+                $('<legend>', {style:'margin-bottom:0px;borer-bottom-style:none;width:auto;'}).append(
+                    $('<h4>').text('ZIP Codes')
+                ),
+                $('<div>', {class:'controls-container', style:'padding-top:0px'}).append(
+                    $('<input>', {type:'checkbox', id:'usgb-zips-dynamicLabels'}),
+                    $('<label>', {for:'usgb-zips-dynamicLabels'}).text('Dynamic label positions')
+                )
+            ),
+            $('<fieldset>', {style:'border:1px solid silver;padding:8px;border-radius:4px;'}).append(
+                $('<legend>', {style:'margin-bottom:0px;borer-bottom-style:none;width:auto;'}).append(
+                    $('<h4>').text('Counties')
+                ),
+                $('<div>', {class:'controls-container', style:'padding-top:0px'}).append(
+                    $('<input>', {type:'checkbox', id:'usgb-counties-dynamicLabels'}),
+                    $('<label>', {for:'usgb-counties-dynamicLabels'}).text('Dynamic label positions')
+                )
+            )
         );
         appendTab('USGB', $content.html());
 
-        // $('#usgb-show-zips').prop('checked', _settings.zipsVisible).change(function() {
-        //     _settings.zipsVisible = $('#usgb-show-zips').is(':checked');
-        //     saveSettings();
-        //     if (_settings.zipsVisible) {
-        //         fetchBoundaries();
-        //     } else {
-        //         _zipsLayer.removeAllFeatures();
-        //     }
-        // });
-        // $('#usgb-show-counties').prop('checked', _settings.countiesVisible).change(function() {
-        //     _settings.countiesVisible = $('#usgb-show-counties').is(':checked');
-        //     saveSettings();
-        //     if (_settings.countiesVisible) {
-        //         fetchBoundaries();
-        //     } else {
-        //         _countiesLayer.removeAllFeatures();
-        //     }
-        // });
+        $('#usgb-zips-dynamicLabels').prop('checked', _settings.layers.zips.dynamicLabels).change(function() {
+            _settings.layers.zips.dynamicLabels = $('#usgb-zips-dynamicLabels').is(':checked');
+            saveSettings();
+            fetchBoundaries();
+        });
+        $('#usgb-counties-dynamicLabels').prop('checked', _settings.layers.counties.dynamicLabels).change(function() {
+            _settings.layers.counties.dynamicLabels = $('#usgb-counties-dynamicLabels').is(':checked');
+            saveSettings();
+            fetchBoundaries();
+        });
     }
 
     function init() {
@@ -519,8 +482,7 @@
             Waze.loginManager.events &&
             Waze.loginManager.events.register &&
             Waze.model && Waze.model.states && Waze.model.states.additionalInfo &&
-            Waze.map && Waze.loginManager.isLoggedIn() //&&
-            /*WazeWrapBeta.Interface*/ ) {
+            Waze.map && Waze.loginManager.isLoggedIn()) {
             log('Initializing...', 1);
 
             init();
