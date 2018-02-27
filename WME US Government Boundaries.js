@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME US Government Boundaries
 // @namespace    https://greasyfork.org/users/45389
-// @version      2017.12.08.001
+// @version      2018.02.27.001
 // @description  Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author       MapOMatic
 // @include      /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -14,12 +14,11 @@
 // ==/UserScript==
 
 /* global $ */
-/* global OpenLayers */
+/* global OL */
 /* global GM_info */
 /* global W */
 /* global GM_xmlhttpRequest */
 /* global unsafeWindow */
-/* global Waze */
 /* global Components */
 /* global I18n */
 /* global turf */
@@ -108,7 +107,7 @@
     }
 
     function updateNameDisplay(context){
-        var mapCenter = new OpenLayers.Geometry.Point(W.map.center.lon,W.map.center.lat);
+        var mapCenter = new OL.Geometry.Point(W.map.center.lon,W.map.center.lat);
         var feature;
         var text = '';
         var label;
@@ -160,12 +159,12 @@
         feature.geometry.rings.forEach(function(ringIn) {
             var pnts= [];
             for(var i=0;i<ringIn.length;i++){
-                pnts.push(new OpenLayers.Geometry.Point(ringIn[i][0], ringIn[i][1]));
+                pnts.push(new OL.Geometry.Point(ringIn[i][0], ringIn[i][1]));
             }
-            rings.push(new OpenLayers.Geometry.LinearRing(pnts));
+            rings.push(new OL.Geometry.LinearRing(pnts));
         });
-        var polygon = new OpenLayers.Geometry.Polygon(rings);
-        return new OpenLayers.Feature.Vector(polygon, attributes);
+        var polygon = new OL.Geometry.Polygon(rings);
+        return new OL.Feature.Vector(polygon, attributes);
     }
 
     function getRingArrayFromFeature(feature) {
@@ -193,10 +192,10 @@
                 turfPt = turf.pointOnSurface(intersection);
             }
             var turfCoords = turfPt.geometry.coordinates;
-            var pt = new OpenLayers.Geometry.Point(turfCoords[0], turfCoords[1]);
+            var pt = new OL.Geometry.Point(turfCoords[0], turfCoords[1]);
             var attributes = feature.attributes;
             attributes.label = feature.attributes.name; //featureArea/screenArea;
-            return [new OpenLayers.Feature.Vector(pt, attributes)];
+            return [new OL.Feature.Vector(pt, attributes)];
         }
     }
 
@@ -260,8 +259,8 @@
             _processContexts.forEach(function(context) {context.cancel = true;});
         }
 
-        var extent = Waze.map.getExtent();
-        var zoom = Waze.map.getZoom();
+        var extent = W.map.getExtent();
+        var zoom = W.map.getZoom();
         var url;
         var context = {callCount:0, cancel:false};
         _processContexts.push(context);
@@ -293,6 +292,19 @@
             });
         }
     }
+
+    // function fetchTimeZone() {
+    //     let center = W.map.getCenter();
+    //     center.transform(W.map.projection, W.map.displayProjection);
+    //     var dt = new Date();
+    //     $.ajax({
+    //         url: 'https://maps.googleapis.com/maps/api/timezone/json?location=' + center.lat + ',' + center.lon + '&timestamp=' + (dt.getTime() / 1000),
+    //         method: 'GET',
+    //         success: function(data) {
+    //             console.log(data);
+    //         }
+    //     });
+    // }
 
     function onZipsLayerVisibilityChanged(evt) {
         _settings.layers.zips.visible = _zipsLayer.visibility;
@@ -358,15 +370,15 @@
             labelOutlineWidth: 2
         };
 
-        _zipsLayer = new OpenLayers.Layer.Vector("US Gov't Boundaries - Zip Codes", {
+        _zipsLayer = new OL.Layer.Vector("US Gov't Boundaries - Zip Codes", {
             uniqueName: "__WMEUSBoundaries_Zips",
-            styleMap: new OpenLayers.StyleMap({
+            styleMap: new OL.StyleMap({
                 default: _zipsStyle
             })
         });
-        _countiesLayer = new OpenLayers.Layer.Vector("US Gov't Boundaries - Counties", {
+        _countiesLayer = new OL.Layer.Vector("US Gov't Boundaries - Counties", {
             uniqueName: "__WMEUSBoundaries_Counties",
-            styleMap: new OpenLayers.StyleMap({
+            styleMap: new OL.StyleMap({
                 default: _countiesStyle
             })
         });
@@ -378,12 +390,13 @@
         _zipsLayer.setVisibility(_settings.layers.zips.visible);
         _countiesLayer.setVisibility(_settings.layers.counties.visible);
 
-        Waze.map.addLayers([_countiesLayer, _zipsLayer]);
+        W.map.addLayers([_countiesLayer, _zipsLayer]);
 
         _zipsLayer.events.register('visibilitychanged',null,onZipsLayerVisibilityChanged);
         _countiesLayer.events.register('visibilitychanged',null,onCountiesLayerVisibilityChanged);
-        Waze.map.events.register("moveend",Waze.map,function(e){
+        W.map.events.register("moveend",W.map,function(e){
             fetchBoundaries();
+            // fetchTimeZone();
             return true;
         },true);
 
@@ -478,11 +491,11 @@
     }
 
     function bootstrap() {
-        if (Waze && Waze.loginManager &&
-            Waze.loginManager.events &&
-            Waze.loginManager.events.register &&
-            Waze.model && Waze.model.states && Waze.model.states.additionalInfo &&
-            Waze.map && Waze.loginManager.isLoggedIn()) {
+        if (W && W.loginManager &&
+            W.loginManager.events &&
+            W.loginManager.events.register &&
+            W.model && W.model.states && W.model.states.additionalInfo &&
+            W.map && W.loginManager.isLoggedIn()) {
             log('Initializing...', 1);
 
             init();
@@ -529,7 +542,7 @@
                 CreateParentGroup(isParentChecked);  //create the group
                 sessionStorage[groupClass] = isParentChecked;
 
-                Waze.app.modeController.model.bind('change:mode', function(model, modeId, context){ //make it reappear after changing modes
+                W.app.modeController.model.bind('change:mode', function(model, modeId, context){ //make it reappear after changing modes
                     CreateParentGroup((sessionStorage[groupClass]=='true'));
                 });
             }
@@ -556,7 +569,7 @@
         };
 
 
-        Waze.app.modeController.model.bind('change:mode', function(model, modeId, context){
+        W.app.modeController.model.bind('change:mode', function(model, modeId, context){
             buildLayerItem((sessionStorage[normalizedText]=='true'));
         });
 
