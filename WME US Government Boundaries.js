@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME US Government Boundaries
 // @namespace    https://greasyfork.org/users/45389
-// @version      2018.02.27.001
+// @version      2018.05.15.001
 // @description  Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author       MapOMatic
 // @include      /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -107,7 +107,8 @@
     }
 
     function updateNameDisplay(context){
-        var mapCenter = new OL.Geometry.Point(W.map.center.lon,W.map.center.lat);
+        var center = W.map.getCenter();
+        var mapCenter = new OL.Geometry.Point(center.lon,center.lat);
         var feature;
         var text = '';
         var label;
@@ -549,7 +550,7 @@
 
         var buildLayerItem = function(isChecked){
             var groupChildren = $("."+groupClass).parent().parent().find('.children').not('.extended');
-            var $li = $('<li>');
+            let $li = $('<li>');
             $li.html([
                 '<div class="controls-container toggler">',
                 '<input type="checkbox" id="' + checkboxID + '"  class="' + checkboxID + ' toggle">',
@@ -565,7 +566,7 @@
                 callback(false);
             }
 
-            $('#' + groupClass).change(function(){$('#' + checkboxID).prop('disabled', !this.checked); callback(this.checked);});
+            $('#' + groupClass).change(function(){$('#' + checkboxID).prop('disabled', !this.checked); callback(!this.checked ? false : sessionStorage[normalizedText]=='true');});
         };
 
 
