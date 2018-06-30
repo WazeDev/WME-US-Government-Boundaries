@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         WME US Government Boundaries (beta)
 // @namespace    https://greasyfork.org/users/45389
-// @version      2018.05.15.001
+// @version      2018.06.30.001
 // @description  Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author       MapOMatic
 // @include      /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -40,6 +40,21 @@
     var _zipsLayer;
     var _countiesLayer;
     var _settings = {};
+    const STATES = {
+        _states:[
+            ['US (Country)','US',-1],['Alabama','AL',1],['Alaska','AK',2],['American Samoa','AS',60],['Arizona','AZ',4],['Arkansas','AR',5],['California','CA',6],['Colorado','CO',8],['Connecticut','CT',9],['Delaware','DE',10],['District of Columbia','DC',11],
+            ['Florida','FL',12],['Georgia','GA',13],['Guam','GU',66],['Hawaii','HI',15],['Idaho','ID',16],['Illinois','IL',17],['Indiana','IN',18],['Iowa','IA',19],['Kansas','KS',20],
+            ['Kentucky','KY',21],['Louisiana','LA',22],['Maine','ME',23],['Maryland','MD',24],['Massachusetts','MA',25],['Michigan','MI',26],['Minnesota','MN',27],['Mississippi','MS',28],['Missouri','MO',29],
+            ['Montana','MT',30],['Nebraska','NE',31],['Nevada','NV',32],['New Hampshire','NH',33],['New Jersey','NJ',34],['New Mexico','NM',35],['New York','NY',36],['North Carolina','NC',37],['North Dakota','ND',38],
+            ['Northern Mariana Islands','MP',69],['Ohio','OH',39],['Oklahoma','OK',40],['Oregon','OR',41],['Pennsylvania','PA',42],['Puerto Rico','PR',72],['Rhode Island','RI',44],['South Carolina','SC',45],
+            ['South Dakota','SD',46],['Tennessee','TN',47],['Texas','TX',48],['Utah','UT',49],['Vermont','VT',50],['Virgin Islands','VI',78],['Virginia','VA',51],['Washington','WA',53],['West Virginia','WV',54],['Wisconsin','WI',55],['Wyoming','WY',56]
+        ],
+        toAbbr: function(fullName) { return this._states.find(a => a[0] === fullName)[1]; },
+        toFullName: function(abbr) { return this._states.find(a => a[1] === abbr)[0]; },
+        toFullNameArray: function() { return this._states.map(a => a[0]); },
+        toAbbrArray: function() { return this._states.map(a => a[1]); },
+        fromId: function(id) { return this._states.find(a => a[2] === id); }
+    };
 
     function log(message, level) {
         if (message && (!level || (level <= DEBUG_LEVEL))) {
@@ -63,8 +78,8 @@
         var defaultSettings = {
             lastVersion:null,
             layers: {
-                zips: { visible: true, dynamicLabels: false, junk:123.42 },
-                counties: { visible: true, dynamicLabels: true }
+                zips: { visible: true, dynamicLabels: false },
+                counties: { visible: true, dynamicLabels: true, showState: true }
             }
         };
         if (loadedSettings) {
@@ -200,7 +215,7 @@
         }
     }
 
-    function processBoundaries(boundaries, context, type, nameField, labelField) {
+    function processBoundaries(boundaries, context, type, nameField, labelFunc) {
         var layer;
         var layerSettings;
         switch(type) {
@@ -220,9 +235,10 @@
             layer.removeAllFeatures();
             if (!context.cancel) {
                 boundaries.forEach(function(boundary) {
+                    var label = labelFunc(boundary);
                     var attributes = {
-                        name: boundary.attributes[nameField],
-                        label: layerSettings.dynamicLabels ? '' : boundary.attributes[nameField],
+                        name: label,
+                        label: layerSettings.dynamicLabels ? '' : label,
                         type: type
                     };
 
@@ -255,6 +271,18 @@
 
     var _processContexts = [];
 
+    function getZipLabel(feature) {
+        return feature.attributes['ZCTA5'];
+    }
+    function getCountyLabel(feature) {
+        let label = feature.attributes['NAME'];
+        if (_settings.layers.counties.showState) {
+            let stateId = parseInt(feature.attributes['STATE']);
+            label += ', ' + STATES.fromId(stateId)[1];
+        }
+        return label;
+    }
+
     function fetchBoundaries() {
         if (_processContexts.length > 0) {
             _processContexts.forEach(function(context) {context.cancel = true;});
@@ -278,18 +306,18 @@
                 context: context,
                 method: 'GET',
                 datatype: 'json',
-                success: function(data) {processBoundaries($.parseJSON(data).features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
+                success: function(data) {processBoundaries($.parseJSON(data).features, this, 'zip', 'ZCTA5', getZipLabel); }
             });
         }
         if (_settings.layers.counties.visible) {
-            url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME']);
+            url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME','STATE']);
             context.callCount++;
             $.ajax({
                 url: url,
                 context: context,
                 method: 'GET',
                 datatype: 'json',
-                success: function(data) {processBoundaries($.parseJSON(data).features, this, 'county', 'NAME', 'NAME'); }
+                success: function(data) {processBoundaries($.parseJSON(data).features, this, 'county', 'NAME', getCountyLabel); }
             });
         }
     }
@@ -460,6 +488,10 @@
                 $('<div>', {class:'controls-container', style:'padding-top:0px'}).append(
                     $('<input>', {type:'checkbox', id:'usgb-counties-dynamicLabels'}),
                     $('<label>', {for:'usgb-counties-dynamicLabels'}).text('Dynamic label positions')
+                ),
+                $('<div>', {class:'controls-container', style:'padding-top:0px'}).append(
+                    $('<input>', {type:'checkbox', id:'usgb-counties-showState'}),
+                    $('<label>', {for:'usgb-counties-showState'}).text('Include state in labels')
                 )
             )
         );
@@ -475,14 +507,15 @@
             saveSettings();
             fetchBoundaries();
         });
+        $('#usgb-counties-showState').prop('checked', _settings.layers.counties.showState).change(function() {
+            _settings.layers.counties.showState = $('#usgb-counties-showState').is(':checked');
+            saveSettings();
+            fetchBoundaries();
+        });
     }
 
     function init() {
         loadSettings();
-        String.prototype.replaceAll = function(search, replacement) {
-            var target = this;
-            return target.replace(new RegExp(search, 'g'), replacement);
-        };
         initLayer();
         initTab();
         showScriptInfoAlert();
