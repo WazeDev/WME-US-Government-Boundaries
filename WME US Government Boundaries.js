@@ -1,16 +1,18 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2018.08.18.001
+// @version         2018.12.28.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
 // @require         https://cdnjs.cloudflare.com/ajax/libs/Turf.js/4.7.3/turf.min.js
+// @require         https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
 // @grant           GM_xmlhttpRequest
 // @license         GNU GPLv3
 // @contributionURL https://github.com/WazeDev/Thank-The-Authors
 // @connect         census.gov
 // @connect         wazex.us
+// @connect         usps.com
 
 // ==/UserScript==
 
@@ -23,15 +25,20 @@
 /* global Components */
 /* global I18n */
 /* global turf */
+/* global WazeWrap */
 
 (function() {
     'use strict';
 
     var SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
-    var DEBUG_LEVEL = 0;
     var ALERT_UPDATE = false;
     var ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
     var COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
+    const USPS_ROUTE_COLORS = ['#f00','#0a0','#00f','#a0a','#6c82cb','#0aa'];
+    const USPS_ROUTES_URL_TEMPLATE = 'https://gis.usps.com/arcgis/rest/services/EDDM/selectNear/GPServer/routes/execute?f=json&env%3AoutSR=102100&' +
+          'Selecting_Features=%7B%22geometryType%22%3A%22esriGeometryPoint%22%2C%22features%22%3A%5B%7B%22geometry%22%3A%7B%22x%22%3A{lon}%2C%22y%22%3A{lat}' +
+          '%2C%22spatialReference%22%3A%7B%22wkid%22%3A102100%2C%22latestWkid%22%3A3857%7D%7D%7D%5D%2C%22sr%22%3A%7B%22wkid%22%3A102100%2C%22latestWkid%22%3A3857%7D%7D&' +
+          'Distance={radius}&Rte_Box=R&userName=EDDM';
 
     var _scriptVersion = GM_info.script.version;
     var _scriptVersionChanges = [
@@ -40,6 +47,11 @@
     ].join('');
     var _zipsLayer;
     var _countiesLayer;
+    let _uspsRoutesMapLayer = null;
+    let _uspsRoutesradius = 0.5; // miles
+    let _circleFeature;
+    let _$resultsDiv;
+    let _$getRoutesButton;
     var _settings = {};
     const STATES = {
         _states:[
@@ -57,10 +69,8 @@
         fromId: function(id) { return this._states.find(a => a[2] === id); }
     };
 
-    function log(message, level) {
-        if (message && (!level || (level <= DEBUG_LEVEL))) {
-            console.log('US Boundaries: ', message);
-        }
+    function log(message) {
+        console.log('USGB:', message);
     }
 
     // Recursively checks the settings object and fills in missing properties from the default settings object.
@@ -97,7 +107,7 @@
             _settings.layers.zips.visible = _zipsLayer.visibility;
             _settings.layers.counties.visible = _countiesLayer.visibility;
             localStorage.setItem(SETTINGS_STORE_NAME, JSON.stringify(_settings));
-            log('Settings saved', 1);
+            log('Settings saved');
         }
     }
 
@@ -269,6 +279,80 @@
             }
         }
     }
+       function getUspsRoutesUrl(lon, lat, radius) {
+        return USPS_ROUTES_URL_TEMPLATE.replace('{lon}', lon).replace('{lat}', lat).replace('{radius}', radius);
+    }
+
+    function getCircleLinearRing() {
+        let center = W.map.getCenter();
+        let radius = _uspsRoutesradius * 1609.344; // miles to meters
+        let points = [];
+
+        for(let degree = 0; degree < 360; degree += 5){
+            let radians = degree * Math.PI/180;
+            let lon = center.lon + radius * Math.cos(radians);
+            let lat = center.lat + radius * Math.sin(radians);
+            points.push(new OL.Geometry.Point(lon, lat));
+        }
+        return new OL.Geometry.LinearRing(points);
+    }
+
+    function processUspsRoutesResponse(res) {
+        let data = $.parseJSON(res.responseText);
+        let routes = data.results[0].value.features;
+
+        let zipRoutes = {};
+        routes.forEach(route => {
+            let id = route.attributes.CITY_STATE + ' ' + route.attributes.ZIP_CODE;
+            let zipRoute = zipRoutes[id];
+            if (!zipRoute) {
+                zipRoute = {paths:[]};
+                zipRoutes[id] = zipRoute;
+            }
+            zipRoute.paths = zipRoute.paths.concat(route.geometry.paths);
+        });
+
+        let features = [];
+        let routeIdx = 0;
+
+        _$resultsDiv.empty();
+        Object.keys(zipRoutes).forEach(zipName => {
+            var paths = []
+            let route = zipRoutes[zipName];
+            route.paths.forEach(function(path){
+                var pointList = [];
+                path.forEach(function(point){
+                    pointList.push(new OL.Geometry.Point(point[0],point[1]));
+                });
+                paths.push( new OL.Geometry.LineString(pointList));
+            });
+            let color = USPS_ROUTE_COLORS[routeIdx];
+            let style = {
+                strokeColor: color,
+                strokeDashstyle: "solid",
+                strokeWidth: 18
+            };
+            features.push( new OL.Feature.Vector(
+                new OL.Geometry.MultiLineString(paths), null, style
+            ));
+            _$resultsDiv.append($('<div>').text(zipName).css({color: color, fontWeight: 'bold'}));
+            routeIdx++;
+        });
+        _$getRoutesButton.removeAttr('disabled').css({color:'#000'});
+        _uspsRoutesMapLayer.addFeatures(features);
+    }
+
+    function fetchUspsRoutesFeatures() {
+        let center = W.map.getCenter();
+        let url = getUspsRoutesUrl(center.lon, center.lat, _uspsRoutesradius);
+
+        _$getRoutesButton.attr('disabled', 'true').css({color:'#888'});
+        _$resultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
+        _uspsRoutesMapLayer.removeAllFeatures();
+        GM_xmlhttpRequest({ url: url, onload: processUspsRoutesResponse});
+    }
+
+
 
     var _processContexts = [];
 
@@ -347,17 +431,36 @@
         fetchBoundaries();
     }
 
-    function onModeChanged(model, modeId, context) {
-        if(!modeId || modeId === 1) {
-            initUserPanel();
-        }
-    }
-
     function onZipsLayerToggleChanged(checked) {
         _zipsLayer.setVisibility(checked);
     }
     function onCountiesLayerToggleChanged(checked) {
         _countiesLayer.setVisibility(checked);
+    }
+
+    function onGetRoutesButtonClick() {
+        fetchUspsRoutesFeatures();
+    }
+    function onGetRoutesButtonMouseEnter() {
+        _$getRoutesButton.css({color: '#00a'});
+        let style = {
+            strokeColor: '#ff0',
+            strokeDashstyle: "solid",
+            strokeWidth: 6,
+            fillColor: '#ff0',
+            fillOpacity: 0.2
+        };
+        _circleFeature = new OL.Feature.Vector(getCircleLinearRing(), null, style);
+        _uspsRoutesMapLayer.addFeatures([ _circleFeature ]);
+    }
+    function onGetRoutesButtonMouseLeave() {
+        _$getRoutesButton.css({color: '#000'});
+        _uspsRoutesMapLayer.removeFeatures([ _circleFeature ]);
+    }
+
+    function onClearRoutesButtonClick() {
+        _uspsRoutesMapLayer.removeAllFeatures();
+        _$resultsDiv.empty();
     }
 
     function showScriptInfoAlert() {
@@ -385,7 +488,7 @@
             labelOutlineColor: "white",
             labelOutlineWidth: 2
         };
-        _countiesStyle =  {
+        _countiesStyle = {
             strokeColor: 'pink',
             strokeOpacity: 1,
             strokeWidth: 6,
@@ -431,8 +534,8 @@
         },true);
 
         // Add the layer checkbox to the Layers menu.
-        AddLayerCheckbox("display", "Zip Codes", _settings.layers.zips.visible, onZipsLayerToggleChanged);
-        AddLayerCheckbox("display", "Counties", _settings.layers.counties.visible, onCountiesLayerToggleChanged);
+        WazeWrap.Interface.AddLayerCheckbox("display", "Zip Codes", _settings.layers.zips.visible, onZipsLayerToggleChanged);
+        WazeWrap.Interface.AddLayerCheckbox("display", "Counties", _settings.layers.counties.visible, onCountiesLayerToggleChanged);
     }
 
     function appendTab(name, content) {
@@ -442,7 +545,7 @@
         var $tab;
 
         var idName, i = 0;
-        if (name && 'string' === typeof name &&  content && 'string' === typeof content) {
+        if (name && 'string' === typeof name && content && 'string' === typeof content) {
             /* Sanitize name for html id attribute */
             idName = name.toLowerCase().replace(/[^a-z-_]/g, '');
             /* Make sure id will be unique on page */
@@ -515,6 +618,20 @@
         });
     }
 
+    function initUspsRoutesLayer(){
+        _uspsRoutesMapLayer = new OL.Layer.Vector("USPS Routes", {uniqueName: "__wmeUSPSroutes"});
+        W.map.addLayer(_uspsRoutesMapLayer);
+
+        //W.map.setLayerIndex(_uspsRoutesMapLayer, W.map.getLayerIndex(W.map.roadLayers[0])-1);
+        // HACK to get around conflict with URO+.  If URO+ is fixed, this can be replaced with the setLayerIndex line above.
+        _uspsRoutesMapLayer.setZIndex(334)
+        var checkLayerZIndex = () => { if (_uspsRoutesMapLayer.getZIndex() !== 334) _uspsRoutesMapLayer.setZIndex(334); };
+        setInterval(function(){checkLayerZIndex();}, 100);
+        // END HACK
+
+        _uspsRoutesMapLayer.setOpacity(0.8);
+    }
+
     function init() {
         loadSettings();
         initLayer();
@@ -522,92 +639,30 @@
         showScriptInfoAlert();
         fetchBoundaries();
 
-        log('Initialized.', 1);
+        initUspsRoutesLayer();
+        _$resultsDiv = $('<div>', {id: 'usps-route-results', style: 'margin-top:3px;'});
+        _$getRoutesButton = $('<button>', {id: 'get-usps-routes', style: 'height:23px;'}).text('Get USPS routes');
+        $('#sidebar').prepend(
+            $('<div>', {style: 'margin-left:10px;'}).append(
+                _$getRoutesButton.click(onGetRoutesButtonClick).mouseenter(onGetRoutesButtonMouseEnter).mouseout(onGetRoutesButtonMouseLeave),
+                $('<button>', {id: 'clear-usps-routes', style: 'height:23px; margin-left:4px;'}).text('Clear').click(onClearRoutesButtonClick),
+                _$resultsDiv
+            )
+        );
+
+        log('Initialized.');
     }
 
-    function bootstrap() {
-        if (W && W.loginManager &&
-            W.loginManager.events &&
-            W.loginManager.events.register &&
-            W.model && W.model.states && W.model.states.additionalInfo &&
-            W.map && W.loginManager.user) {
-            log('Initializing...', 1);
-
+    function bootstrap(tries = 1) {
+        if (W && W.loginManager && W.loginManager.events && W.loginManager.events.register && W.model && W.model.states && W.model.states.additionalInfo && W.map && W.loginManager.user && WazeWrap.Ready) {
+            log('Initializing...');
             init();
         } else {
-            log('Bootstrap failed. Trying again...', 1);
-            setTimeout(function () {
-                bootstrap();
-            }, 1000);
+            if (tries % 20 === 0) log('Bootstrap failed. Trying again...');
+            setTimeout(() => bootstrap(++tries), 250);
         }
     }
 
-    log('Bootstrap...', 1);
+    log('Bootstrap...');
     bootstrap();
-
-    // "Borrowed" from WazeWrap until it works with sandboxed scripts:
-    function AddLayerCheckbox(group, checkboxText, checked, callback) {
-        group = group.toLowerCase();
-        var normalizedText = checkboxText.toLowerCase().replace(/\s/g, '_');
-        var checkboxID = "layer-switcher-item_" + normalizedText;
-        var groupPrefix = 'layer-switcher-group_';
-        var groupClass = groupPrefix + group.toLowerCase();
-        sessionStorage[normalizedText] = checked;
-
-        var CreateParentGroup = function(groupChecked){
-            var groupList = $('.layer-switcher').find('.list-unstyled.togglers');
-            var checkboxText = group.charAt(0).toUpperCase() + group.substr(1);
-            var newLI = $('<li class="group">');
-            newLI.html([
-                '<div class="controls-container toggler">',
-                '<input class="' + groupClass + '" id="' + groupClass + '" type="checkbox" ' + (groupChecked ? 'checked' : '') +'>',
-                '<label for="' + groupClass + '">',
-                '<span class="label-text">'+ checkboxText + '</span>',
-                '</label></div>',
-                '<ul class="children"></ul>'
-            ].join(' '));
-
-            groupList.append(newLI);
-            $('#' + groupClass).change(function(){sessionStorage[groupClass] = this.checked;});
-        };
-
-        if(group !== "issues" && group !== "places" && group !== "road" && group !== "display") //"non-standard" group, check its existence
-            if($('.'+groupClass).length === 0){ //Group doesn't exist yet, create it
-                var isParentChecked = (typeof sessionStorage[groupClass] == "undefined" ? true : sessionStorage[groupClass]=='true');
-                CreateParentGroup(isParentChecked);  //create the group
-                sessionStorage[groupClass] = isParentChecked;
-
-                W.app.modeController.model.bind('change:mode', function(model, modeId, context){ //make it reappear after changing modes
-                    CreateParentGroup((sessionStorage[groupClass]=='true'));
-                });
-            }
-
-        var buildLayerItem = function(isChecked){
-            var groupChildren = $("."+groupClass).parent().parent().find('.children').not('.extended');
-            let $li = $('<li>');
-            $li.html([
-                '<div class="controls-container toggler">',
-                '<input type="checkbox" id="' + checkboxID + '"  class="' + checkboxID + ' toggle">',
-                '<label for="' + checkboxID + '"><span class="label-text">' + checkboxText + '</span></label>',
-                '</div>',
-            ].join(' '));
-
-            groupChildren.append($li);
-            $('#' + checkboxID).prop('checked', isChecked);
-            $('#' + checkboxID).change(function(){callback(this.checked); sessionStorage[normalizedText] = this.checked;});
-            if(!$('#' + groupClass).is(':checked')){
-                $('#' + checkboxID).prop('disabled', true);
-                callback(false);
-            }
-
-            $('#' + groupClass).change(function(){$('#' + checkboxID).prop('disabled', !this.checked); callback(!this.checked ? false : sessionStorage[normalizedText]=='true');});
-        };
-
-
-        W.app.modeController.model.bind('change:mode', function(model, modeId, context){
-            buildLayerItem((sessionStorage[normalizedText]=='true'));
-        });
-
-        buildLayerItem(checked);
-    }
 })();
