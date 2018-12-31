@@ -578,19 +578,29 @@ function initTab() {
     const $content = $('<div>').append(
         $('<fieldset>', { style: 'border:1px solid silver;padding:8px;border-radius:4px;' }).append(
             $('<legend>', { style: 'margin-bottom:0px;borer-bottom-style:none;width:auto;' }).append(
-                $('<h4>').text('Dynamic label positions')
-            ),
-            $('<div>', { class: 'controls-container', style: 'padding-top:0px' }).append(
-                $('<input>', { type: 'checkbox', id: 'usgb-counties-dynamicLabels' }),
-                $('<label>', { for: 'usgb-counties-dynamicLabels' }).text('Counties')
+                $('<h4>').text('ZIP Codes')
             ),
             $('<div>', { class: 'controls-container', style: 'padding-top:0px' }).append(
                 $('<input>', { type: 'checkbox', id: 'usgb-zips-dynamicLabels' }),
-                $('<label>', { for: 'usgb-zips-dynamicLabels' }).text('ZIP codes')
+                $('<label>', { for: 'usgb-zips-dynamicLabels' }).text('Dynamic label positions')
+            )
+        ),
+        $('<fieldset>', { style: 'border:1px solid silver;padding:8px;border-radius:4px;' }).append(
+            $('<legend>', { style: 'margin-bottom:0px;borer-bottom-style:none;width:auto;' }).append(
+                $('<h4>').text('Counties')
+            ),
+            $('<div>', { class: 'controls-container', style: 'padding-top:0px' }).append(
+                $('<input>', { type: 'checkbox', id: 'usgb-counties-dynamicLabels' }),
+                $('<label>', { for: 'usgb-counties-dynamicLabels' }).text('Dynamic label positions')
+            )
+        ),
+        $('<fieldset>', { style: 'border:1px solid silver;padding:8px;border-radius:4px;' }).append(
+            $('<legend>', { style: 'margin-bottom:0px;borer-bottom-style:none;width:auto;' }).append(
+                $('<h4>').text('Time zones')
             ),
             $('<div>', { class: 'controls-container', style: 'padding-top:0px' }).append(
                 $('<input>', { type: 'checkbox', id: 'usgb-timezones-dynamicLabels' }),
-                $('<label>', { for: 'usgb-timezones-dynamicLabels' }).text('Time zones')
+                $('<label>', { for: 'usgb-timezones-dynamicLabels' }).text('Dynamic label positions')
             )
         ),
         $('<div>').append(
