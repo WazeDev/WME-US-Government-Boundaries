@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries (beta)
 // @namespace       https://greasyfork.org/users/45389
-// @version         2018.12.30.001
+// @version         2018.12.30.002
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -14,6 +14,7 @@
 // @connect         census.gov
 // @connect         wazex.us
 // @connect         usps.com
+// @connect         arcgis.com
 // ==/UserScript==
 
 /* global $ */
@@ -557,7 +558,7 @@ function initLayers() {
 
     _zipsLayer.events.register('visibilitychanged', null, onZipsLayerVisibilityChanged);
     _countiesLayer.events.register('visibilitychanged', null, onCountiesLayerVisibilityChanged);
-    _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged)
+    _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged);
     W.map.events.register('moveend', W.map, () => {
         fetchBoundaries();
         // fetchTimeZone();
