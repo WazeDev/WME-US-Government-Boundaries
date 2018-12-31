@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2018.12.30.001
+// @version         2018.12.30.002
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -14,6 +14,7 @@
 // @connect         census.gov
 // @connect         wazex.us
 // @connect         usps.com
+// @connect         arcgis.com
 // ==/UserScript==
 
 /* global $ */
@@ -30,6 +31,7 @@ const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ALERT_UPDATE = false;
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
+const TIME_ZONES_LAYER_URL = 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Time_Zones/FeatureServer/0/';
 const USPS_ROUTE_COLORS = ['#f00', '#0a0', '#00f', '#a0a', '#6c82cb', '#0aa'];
 const USPS_ROUTES_URL_TEMPLATE = 'https://gis.usps.com/arcgis/rest/services/EDDM/selectNear/GPServer/routes/execute?f=json&env%3AoutSR=102100&'
     + 'Selecting_Features=%7B%22geometryType%22%3A%22esriGeometryPoint%22%2C%22features%22%3A%5B%7B%22'
@@ -38,6 +40,51 @@ const USPS_ROUTES_URL_TEMPLATE = 'https://gis.usps.com/arcgis/rest/services/EDDM
     + '%22%3A3857%7D%7D&Distance={radius}&Rte_Box=R&userName=EDDM';
 const USPS_ROUTES_RADIUS = 0.5; // miles
 const PROCESS_CONTEXTS = [];
+const ZIP_CITIES = {};
+const ZIPS_STYLE = {
+    strokeColor: '#FF0000',
+    strokeOpacity: 1,
+    strokeWidth: 3,
+    strokeDashstyle: 'solid',
+    fillOpacity: 0,
+    fontSize: '16px',
+    fontFamily: 'Arial',
+    fontWeight: 'bold',
+    fontColor: 'red',
+    label: '${label}',
+    labelYOffset: -20,
+    labelOutlineColor: 'white',
+    labelOutlineWidth: 2
+};
+const COUNTIES_STYLE = {
+    strokeColor: 'pink',
+    strokeOpacity: 1,
+    strokeWidth: 6,
+    strokeDashstyle: 'solid',
+    fillOpacity: 0,
+    fontSize: '18px',
+    fontFamily: 'Arial',
+    fontWeight: 'bold',
+    fontColor: 'pink',
+    label: '${label}',
+    labelOutlineColor: 'black',
+    labelOutlineWidth: 2
+};
+const TIME_ZONES_STYLE = {
+    strokeColor: '#f85',
+    strokeOpacity: 1,
+    strokeWidth: 6,
+    strokeDashstyle: 'solid',
+    fillOpacity: 0,
+    fontSize: '18px',
+    fontFamily: 'Arial',
+    fontWeight: 'bold',
+    fontColor: '#f85',
+    label: '${label}',
+    labelYOffset: -40,
+    labelOutlineColor: '#831',
+    labelOutlineWidth: 2
+};
 const SCRIPT_VERSION = GM_info.script.version;
 const SCRIPT_VERSION_CHANGES = [
     GM_info.script.name,
@@ -49,7 +96,8 @@ const SCRIPT_VERSION_CHANGES = [
 ].join('\n');
 let _zipsLayer;
 let _countiesLayer;
-let _uspsRoutesMapLayer = null;
+let _uspsRoutesLayer;
+let _timeZonesLayer;
 let _circleFeature;
 let _$resultsDiv;
 let _$getRoutesButton;
@@ -77,7 +125,8 @@ function loadSettings() {
         lastVersion: null,
         layers: {
             zips: { visible: true, dynamicLabels: false, junk: 123.42 },
-            counties: { visible: true, dynamicLabels: true }
+            counties: { visible: true, dynamicLabels: true },
+            timeZones: { visible: true, dynamicLabels: true }
         }
     };
     if (loadedSettings) {
@@ -93,6 +142,7 @@ function saveSettings() {
         _settings.lastVersion = SCRIPT_VERSION;
         _settings.layers.zips.visible = _zipsLayer.visibility;
         _settings.layers.counties.visible = _countiesLayer.visibility;
+        _settings.layers.timeZones.visible = _timeZonesLayer.visibility;
         localStorage.setItem(SETTINGS_STORE_NAME, JSON.stringify(_settings));
         log('Settings saved');
     }
@@ -110,16 +160,15 @@ function getUrl(baseUrl, extent, zoom, outFields) {
     let url = `${baseUrl}query?geometry=${encodeURIComponent(geometryStr)}`;
     url += '&returnGeometry=true';
     url += `&outFields=${encodeURIComponent(outFields.join(','))}`;
-    url += '&quantizationParameters={tolerance:100}';
+    // url += '&quantizationParameters={tolerance:100}'; // Don't do this.  It returns relative coordinates.
     url += '&spatialRel=esriSpatialRelIntersects&geometryType=esriGeometryEnvelope&inSR=102100&outSR=3857&f=json';
     return url;
 }
 
-const _zipCities = {};
 function appendCityToZip(zip, cityState, context) {
     if (!context.cancel) {
         if (!cityState.error) {
-            _zipCities[zip] = cityState;
+            ZIP_CITIES[zip] = cityState;
             $('#zip-text').append(` (${cityState.city}, ${cityState.state})`);
         }
     }
@@ -149,8 +198,8 @@ function updateNameDisplay(context) {
                         .css({ color: 'white', display: 'inline-block' }),
                 ).appendTo($('#zip-boundary'));
                 if (!context.cancel) {
-                    if (_zipCities[text]) {
-                        appendCityToZip(text, _zipCities[text], context);
+                    if (ZIP_CITIES[text]) {
+                        appendCityToZip(text, ZIP_CITIES[text], context);
                     } else {
                         GM_xmlhttpRequest({
                             url: `https://wazex.us/zips/ziptocity2.php?zip=${text}`, context, method: 'GET', onload
@@ -230,8 +279,17 @@ function processBoundaries(boundaries, context, type, nameField) {
             layerSettings = _settings.layers.counties;
             layer = _countiesLayer;
             break;
+        case 'timeZone':
+            layerSettings = _settings.layers.timeZones;
+            layer = _timeZonesLayer;
+            boundaries.forEach(boundary => {
+                let zone = boundary.attributes[nameField];
+                if (zone >= 0) zone = `+${zone}`;
+                boundary.attributes[nameField] = `UTC${zone}`;
+            });
+            break;
         default:
-            throw new Error('USBG: Unexpected type argument in processBoundaries');
+            throw new Error('USGB: Unexpected type argument in processBoundaries');
     }
 
     if (context.cancel || !layerSettings.visible) {
@@ -328,7 +386,7 @@ function processUspsRoutesResponse(res) {
         routeIdx++;
     });
     _$getRoutesButton.removeAttr('disabled').css({ color: '#000' });
-    _uspsRoutesMapLayer.addFeatures(features);
+    _uspsRoutesLayer.addFeatures(features);
 }
 
 function fetchUspsRoutesFeatures() {
@@ -337,7 +395,7 @@ function fetchUspsRoutesFeatures() {
 
     _$getRoutesButton.attr('disabled', 'true').css({ color: '#888' });
     _$resultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
-    _uspsRoutesMapLayer.removeAllFeatures();
+    _uspsRoutesLayer.removeAllFeatures();
     GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse });
 }
 
@@ -380,6 +438,19 @@ function fetchBoundaries() {
             success(data) { processBoundaries($.parseJSON(data).features, this, 'county', 'NAME', 'NAME'); }
         });
     }
+    if (_settings.layers.timeZones.visible) {
+        url = getUrl(TIME_ZONES_LAYER_URL, extent, zoom, ['ZONE']);
+        context.callCount++;
+        $.ajax({
+            url,
+            context,
+            method: 'GET',
+            datatype: 'json',
+            success(data) {
+                processBoundaries($.parseJSON(data).features, this, 'timeZone', 'ZONE', 'ZONE');
+            }
+        });
+    }
 }
 
 // function fetchTimeZone() {
@@ -406,12 +477,26 @@ function onCountiesLayerVisibilityChanged() {
     saveSettings();
     fetchBoundaries();
 }
+function onTimeZonesLayerVisibilityChanged() {
+    _settings.layers.timeZones.visible = _timeZonesLayer.visibility;
+    saveSettings();
+    fetchBoundaries();
+}
 
 function onZipsLayerToggleChanged(checked) {
     _zipsLayer.setVisibility(checked);
 }
 function onCountiesLayerToggleChanged(checked) {
     _countiesLayer.setVisibility(checked);
+}
+function onTimeZonesLayerToggleChanged(checked) {
+    _timeZonesLayer.setVisibility(checked);
+}
+
+function onDynamicLabelsCheckboxChanged(settingName, checkboxId) {
+    _settings.layers[settingName].dynamicLabels = $(`#${checkboxId}`).is(':checked');
+    saveSettings();
+    fetchBoundaries();
 }
 
 function onGetRoutesButtonClick() {
@@ -427,15 +512,15 @@ function onGetRoutesButtonMouseEnter() {
         fillOpacity: 0.2
     };
     _circleFeature = new OL.Feature.Vector(getCircleLinearRing(), null, style);
-    _uspsRoutesMapLayer.addFeatures([_circleFeature]);
+    _uspsRoutesLayer.addFeatures([_circleFeature]);
 }
 function onGetRoutesButtonMouseLeave() {
     _$getRoutesButton.css({ color: '#000' });
-    _uspsRoutesMapLayer.removeFeatures([_circleFeature]);
+    _uspsRoutesLayer.removeFeatures([_circleFeature]);
 }
 
 function onClearRoutesButtonClick() {
-    _uspsRoutesMapLayer.removeAllFeatures();
+    _uspsRoutesLayer.removeAllFeatures();
     _$resultsDiv.empty();
 }
 
@@ -446,63 +531,34 @@ function showScriptInfoAlert() {
     }
 }
 
-let _zipsStyle;
-let _countiesStyle;
-function initLayer() {
-    _zipsStyle = {
-        strokeColor: '#FF0000',
-        strokeOpacity: 1,
-        strokeWidth: 3,
-        strokeDashstyle: 'solid',
-        fillOpacity: 0,
-        fontSize: '16px',
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-        fontColor: 'red',
-        label: '${label}',
-        labelYOffset: '-20',
-        labelOutlineColor: 'white',
-        labelOutlineWidth: 2
-    };
-    _countiesStyle = {
-        strokeColor: 'pink',
-        strokeOpacity: 1,
-        strokeWidth: 6,
-        strokeDashstyle: 'solid',
-        fillOpacity: 0,
-        fontSize: '18px',
-        fontFamily: 'Arial',
-        fontWeight: 'bold',
-        fontColor: 'pink',
-        label: '${label}',
-        labelOutlineColor: 'black',
-        labelOutlineWidth: 2
-    };
-
+function initLayers() {
     _zipsLayer = new OL.Layer.Vector('US Gov\'t Boundaries - Zip Codes', {
-        uniqueName: '__WMEUSBoundaries_Zips',
-        styleMap: new OL.StyleMap({
-            default: _zipsStyle
-        })
+        uniqueName: '__WME_USGB_Zips',
+        styleMap: new OL.StyleMap({ default: ZIPS_STYLE })
     });
     _countiesLayer = new OL.Layer.Vector('US Gov\'t Boundaries - Counties', {
-        uniqueName: '__WMEUSBoundaries_Counties',
-        styleMap: new OL.StyleMap({
-            default: _countiesStyle
-        })
+        uniqueName: '__WME_USGB_Counties',
+        styleMap: new OL.StyleMap({ default: COUNTIES_STYLE })
+    });
+    _timeZonesLayer = new OL.Layer.Vector('US Gov\'t Boundaries - Time Zones', {
+        uniqueName: '__WME_USGB_Time_Zones',
+        styleMap: new OL.StyleMap({ default: TIME_ZONES_STYLE })
     });
 
 
     _zipsLayer.setOpacity(0.6);
     _countiesLayer.setOpacity(0.6);
+    _timeZonesLayer.setOpacity(0.6);
 
     _zipsLayer.setVisibility(_settings.layers.zips.visible);
     _countiesLayer.setVisibility(_settings.layers.counties.visible);
+    _timeZonesLayer.setVisibility(_settings.layers.timeZones.visible);
 
-    W.map.addLayers([_countiesLayer, _zipsLayer]);
+    W.map.addLayers([_countiesLayer, _zipsLayer, _timeZonesLayer]);
 
     _zipsLayer.events.register('visibilitychanged', null, onZipsLayerVisibilityChanged);
     _countiesLayer.events.register('visibilitychanged', null, onCountiesLayerVisibilityChanged);
+    _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged);
     W.map.events.register('moveend', W.map, () => {
         fetchBoundaries();
         // fetchTimeZone();
@@ -510,10 +566,12 @@ function initLayer() {
     }, true);
 
     // Add the layer checkbox to the Layers menu.
-    WazeWrap.Interface.AddLayerCheckbox('display', 'Zip Codes',
-        _settings.layers.zips.visible, onZipsLayerToggleChanged);
     WazeWrap.Interface.AddLayerCheckbox('display', 'Counties',
         _settings.layers.counties.visible, onCountiesLayerToggleChanged);
+    WazeWrap.Interface.AddLayerCheckbox('display', 'ZIP codes',
+        _settings.layers.zips.visible, onZipsLayerToggleChanged);
+    WazeWrap.Interface.AddLayerCheckbox('display', 'Time zones',
+        _settings.layers.timeZones.visible, onTimeZonesLayerToggleChanged);
 }
 
 function initTab() {
@@ -535,40 +593,58 @@ function initTab() {
                 $('<input>', { type: 'checkbox', id: 'usgb-counties-dynamicLabels' }),
                 $('<label>', { for: 'usgb-counties-dynamicLabels' }).text('Dynamic label positions')
             )
+        ),
+        $('<fieldset>', { style: 'border:1px solid silver;padding:8px;border-radius:4px;' }).append(
+            $('<legend>', { style: 'margin-bottom:0px;borer-bottom-style:none;width:auto;' }).append(
+                $('<h4>').text('Time zones')
+            ),
+            $('<div>', { class: 'controls-container', style: 'padding-top:0px' }).append(
+                $('<input>', { type: 'checkbox', id: 'usgb-timezones-dynamicLabels' }),
+                $('<label>', { for: 'usgb-timezones-dynamicLabels' }).text('Dynamic label positions')
+            )
+        ),
+        $('<div>').append(
+            $('<span>', { style: 'font-style: italic; white-space: pre-line' })
+                .text('Notes:'
+                    + '\n- ZIP code boundaries are rough approximations because '
+                    + 'ZIP codes are not actually areas. Prefer the "Get USPS routes" '
+                    + 'feature whenever possible.'
+                    + '\n- Time zone boundaries are rough approximations, '
+                    + 'and may not display properly above zoom level 5.')
         )
     );
+
     new WazeWrap.Interface.Tab('USGB', $content.html(), () => {
         $('#usgb-zips-dynamicLabels').prop('checked', _settings.layers.zips.dynamicLabels).change(() => {
-            _settings.layers.zips.dynamicLabels = $('#usgb-zips-dynamicLabels').is(':checked');
-            saveSettings();
-            fetchBoundaries();
+            onDynamicLabelsCheckboxChanged('zips', 'usgb-zips-dynamicLabels');
         });
         $('#usgb-counties-dynamicLabels').prop('checked', _settings.layers.counties.dynamicLabels).change(() => {
-            _settings.layers.counties.dynamicLabels = $('#usgb-counties-dynamicLabels').is(':checked');
-            saveSettings();
-            fetchBoundaries();
+            onDynamicLabelsCheckboxChanged('counties', 'usgb-counties-dynamicLabels');
+        });
+        $('#usgb-timezones-dynamicLabels').prop('checked', _settings.layers.counties.dynamicLabels).change(() => {
+            onDynamicLabelsCheckboxChanged('timeZones', 'usgb-timezones-dynamicLabels');
         });
     });
 }
 
 function initUspsRoutesLayer() {
-    _uspsRoutesMapLayer = new OL.Layer.Vector('USPS Routes', { uniqueName: '__wmeUSPSroutes' });
-    W.map.addLayer(_uspsRoutesMapLayer);
+    _uspsRoutesLayer = new OL.Layer.Vector('USPS Routes', { uniqueName: '__wmeUSPSroutes' });
+    W.map.addLayer(_uspsRoutesLayer);
 
     // W.map.setLayerIndex(_uspsRoutesMapLayer, W.map.getLayerIndex(W.map.roadLayers[0])-1);
     // HACK to get around conflict with URO+.  If URO+ is fixed, this can be replaced with the setLayerIndex line above.
-    _uspsRoutesMapLayer.setZIndex(334);
-    const checkLayerZIndex = () => { if (_uspsRoutesMapLayer.getZIndex() !== 334) _uspsRoutesMapLayer.setZIndex(334); };
+    _uspsRoutesLayer.setZIndex(334);
+    const checkLayerZIndex = () => { if (_uspsRoutesLayer.getZIndex() !== 334) _uspsRoutesLayer.setZIndex(334); };
     setInterval(checkLayerZIndex, 100);
     // END HACK
 
-    _uspsRoutesMapLayer.setOpacity(0.8);
+    _uspsRoutesLayer.setOpacity(0.8);
 }
 
 function init() {
     loadSettings();
 
-    initLayer();
+    initLayers();
     initTab();
     showScriptInfoAlert();
     fetchBoundaries();
