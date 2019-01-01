@@ -2,7 +2,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2018.12.30.002
+// @version         2019.01.01.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -367,6 +367,7 @@ function processUspsRoutesResponse(res) {
     let routeIdx = 0;
 
     _$resultsDiv.empty();
+    let strokeWidth = 16 + (Object.keys(zipRoutes).length - 1) * 8;
     Object.keys(zipRoutes).forEach(zipName => {
         const route = zipRoutes[zipName];
         const paths = route.paths.map(path => {
@@ -377,8 +378,9 @@ function processUspsRoutesResponse(res) {
         const style = {
             strokeColor: color,
             strokeDashstyle: 'solid',
-            strokeWidth: 18
+            strokeWidth
         };
+        strokeWidth -= 8;
         features.push(new OL.Feature.Vector(
             new OL.Geometry.MultiLineString(paths), null, style
         ));
