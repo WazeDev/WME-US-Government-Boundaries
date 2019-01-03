@@ -1,8 +1,7 @@
-/* eslint-disable no-template-curly-in-string */
 // ==UserScript==
 // @name            WME US Government Boundaries (beta)
 // @namespace       https://greasyfork.org/users/45389
-// @version         2019.01.01.001
+// @version         2019.01.03.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
