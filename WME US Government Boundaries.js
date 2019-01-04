@@ -85,6 +85,11 @@ const TIME_ZONES_STYLE = {
     labelOutlineColor: '#831',
     labelOutlineWidth: 2
 };
+const USPS_ROUTES_STYLE = {
+    strokeColor: '${color}',
+    strokeDashstyle: 'solid',
+    strokeWidth: '${strokeWidth}'
+};
 const SCRIPT_VERSION = GM_info.script.version;
 const SCRIPT_VERSION_CHANGES = [
     GM_info.script.name,
@@ -99,7 +104,7 @@ let _countiesLayer;
 let _uspsRoutesLayer;
 let _timeZonesLayer;
 let _circleFeature;
-let _$resultsDiv;
+let _$uspsResultsDiv;
 let _$getRoutesButton;
 let _settings = {};
 
@@ -348,6 +353,13 @@ function getCircleLinearRing() {
     return new OL.Geometry.LinearRing(points);
 }
 
+function getStrokeWidth(feature) {
+    const zoom = W.map.getZoom();
+    let width = zoom < 3 ? 10 + 2 * zoom : 16;
+    width += feature.attributes.zIndex * 6;
+    return width;
+}
+
 function processUspsRoutesResponse(res) {
     const data = $.parseJSON(res.responseText);
     const routes = data.results[0].value.features;
@@ -364,27 +376,24 @@ function processUspsRoutesResponse(res) {
     });
 
     const features = [];
-    let routeIdx = 0;
+    _$uspsResultsDiv.empty();
 
-    _$resultsDiv.empty();
-    let strokeWidth = 16 + (Object.keys(zipRoutes).length - 1) * 8;
-    Object.keys(zipRoutes).forEach(zipName => {
+    const routeCount = Object.keys(zipRoutes).length;
+    Object.keys(zipRoutes).forEach((zipName, routeIdx) => {
         const route = zipRoutes[zipName];
         const paths = route.paths.map(path => {
             const pointList = path.map(point => new OL.Geometry.Point(point[0], point[1]));
             return new OL.Geometry.LineString(pointList);
         });
         const color = USPS_ROUTE_COLORS[routeIdx];
-        const style = {
-            strokeColor: color,
-            strokeDashstyle: 'solid',
-            strokeWidth
-        };
-        strokeWidth -= 8;
         features.push(new OL.Feature.Vector(
-            new OL.Geometry.MultiLineString(paths), null, style
+            new OL.Geometry.MultiLineString(paths), {
+                strokeWidth: getStrokeWidth,
+                zIndex: routeCount - routeIdx - 1,
+                color
+            }
         ));
-        _$resultsDiv.append($('<div>').text(zipName).css({ color, fontWeight: 'bold' }));
+        _$uspsResultsDiv.append($('<div>').text(zipName).css({ color, fontWeight: 'bold' }));
         routeIdx++;
     });
     _$getRoutesButton.removeAttr('disabled').css({ color: '#000' });
@@ -396,7 +405,7 @@ function fetchUspsRoutesFeatures() {
     const url = getUspsRoutesUrl(center.lon, center.lat, USPS_ROUTES_RADIUS);
 
     _$getRoutesButton.attr('disabled', 'true').css({ color: '#888' });
-    _$resultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
+    _$uspsResultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
     _uspsRoutesLayer.removeAllFeatures();
     GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse });
 }
@@ -455,30 +464,18 @@ function fetchBoundaries() {
     }
 }
 
-// function fetchTimeZone() {
-//     let center = W.map.getCenter();
-//     center.transform(W.map.projection, W.map.displayProjection);
-//     let dt = new Date();
-//     $.ajax({
-//         url: 'https://maps.googleapis.com/maps/api/timezone/json?location=' + center.lat + ','
-//              + center.lon + '&timestamp=' + (dt.getTime() / 1000),
-//         method: 'GET',
-//         success: function(data) {
-//             console.log(data);
-//         }
-//     });
-// }
-
 function onZipsLayerVisibilityChanged() {
     _settings.layers.zips.visible = _zipsLayer.visibility;
     saveSettings();
     fetchBoundaries();
 }
+
 function onCountiesLayerVisibilityChanged() {
     _settings.layers.counties.visible = _countiesLayer.visibility;
     saveSettings();
     fetchBoundaries();
 }
+
 function onTimeZonesLayerVisibilityChanged() {
     _settings.layers.timeZones.visible = _timeZonesLayer.visibility;
     saveSettings();
@@ -488,9 +485,11 @@ function onTimeZonesLayerVisibilityChanged() {
 function onZipsLayerToggleChanged(checked) {
     _zipsLayer.setVisibility(checked);
 }
+
 function onCountiesLayerToggleChanged(checked) {
     _countiesLayer.setVisibility(checked);
 }
+
 function onTimeZonesLayerToggleChanged(checked) {
     _timeZonesLayer.setVisibility(checked);
 }
@@ -504,6 +503,7 @@ function onDynamicLabelsCheckboxChanged(settingName, checkboxId) {
 function onGetRoutesButtonClick() {
     fetchUspsRoutesFeatures();
 }
+
 function onGetRoutesButtonMouseEnter() {
     _$getRoutesButton.css({ color: '#00a' });
     const style = {
@@ -516,6 +516,7 @@ function onGetRoutesButtonMouseEnter() {
     _circleFeature = new OL.Feature.Vector(getCircleLinearRing(), null, style);
     _uspsRoutesLayer.addFeatures([_circleFeature]);
 }
+
 function onGetRoutesButtonMouseLeave() {
     _$getRoutesButton.css({ color: '#000' });
     _uspsRoutesLayer.removeFeatures([_circleFeature]);
@@ -523,7 +524,7 @@ function onGetRoutesButtonMouseLeave() {
 
 function onClearRoutesButtonClick() {
     _uspsRoutesLayer.removeAllFeatures();
-    _$resultsDiv.empty();
+    _$uspsResultsDiv.empty();
 }
 
 function showScriptInfoAlert() {
@@ -546,7 +547,10 @@ function initLayers() {
         uniqueName: '__WME_USGB_Time_Zones',
         styleMap: new OL.StyleMap({ default: TIME_ZONES_STYLE })
     });
-
+    _uspsRoutesLayer = new OL.Layer.Vector('USPS Routes', {
+        uniqueName: '__wmeUSPSroutes',
+        styleMap: new OL.StyleMap({ default: USPS_ROUTES_STYLE })
+    });
 
     _zipsLayer.setOpacity(0.6);
     _countiesLayer.setOpacity(0.6);
@@ -556,14 +560,22 @@ function initLayers() {
     _countiesLayer.setVisibility(_settings.layers.counties.visible);
     _timeZonesLayer.setVisibility(_settings.layers.timeZones.visible);
 
-    W.map.addLayers([_countiesLayer, _zipsLayer, _timeZonesLayer]);
+    W.map.addLayers([_countiesLayer, _zipsLayer, _timeZonesLayer, _uspsRoutesLayer]);
+
+    // W.map.setLayerIndex(_uspsRoutesMapLayer, W.map.getLayerIndex(W.map.roadLayers[0])-1);
+    // HACK to get around conflict with URO+.  If URO+ is fixed, this can be replaced with the setLayerIndex line above.
+    _uspsRoutesLayer.setZIndex(334);
+    const checkLayerZIndex = () => { if (_uspsRoutesLayer.getZIndex() !== 334) _uspsRoutesLayer.setZIndex(334); };
+    setInterval(checkLayerZIndex, 100);
+    // END HACK
+
+    _uspsRoutesLayer.setOpacity(0.8);
 
     _zipsLayer.events.register('visibilitychanged', null, onZipsLayerVisibilityChanged);
     _countiesLayer.events.register('visibilitychanged', null, onCountiesLayerVisibilityChanged);
     _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged);
     W.map.events.register('moveend', W.map, () => {
         fetchBoundaries();
-        // fetchTimeZone();
         return true;
     }, true);
 
@@ -629,20 +641,6 @@ function initTab() {
     });
 }
 
-function initUspsRoutesLayer() {
-    _uspsRoutesLayer = new OL.Layer.Vector('USPS Routes', { uniqueName: '__wmeUSPSroutes' });
-    W.map.addLayer(_uspsRoutesLayer);
-
-    // W.map.setLayerIndex(_uspsRoutesMapLayer, W.map.getLayerIndex(W.map.roadLayers[0])-1);
-    // HACK to get around conflict with URO+.  If URO+ is fixed, this can be replaced with the setLayerIndex line above.
-    _uspsRoutesLayer.setZIndex(334);
-    const checkLayerZIndex = () => { if (_uspsRoutesLayer.getZIndex() !== 334) _uspsRoutesLayer.setZIndex(334); };
-    setInterval(checkLayerZIndex, 100);
-    // END HACK
-
-    _uspsRoutesLayer.setOpacity(0.8);
-}
-
 function init() {
     loadSettings();
 
@@ -651,8 +649,7 @@ function init() {
     showScriptInfoAlert();
     fetchBoundaries();
 
-    initUspsRoutesLayer();
-    _$resultsDiv = $('<div>', { id: 'usps-route-results', style: 'margin-top:3px;' });
+    _$uspsResultsDiv = $('<div>', { id: 'usps-route-results', style: 'margin-top:3px;' });
     _$getRoutesButton = $('<button>', { id: 'get-usps-routes', style: 'height:23px;' }).text('Get USPS routes');
     $('#sidebar').prepend(
         $('<div>', { style: 'margin-left:10px;' }).append(
@@ -663,7 +660,7 @@ function init() {
             $('<button>', { id: 'clear-usps-routes', style: 'height:23px; margin-left:4px;' })
                 .text('Clear')
                 .click(onClearRoutesButtonClick),
-            _$resultsDiv
+            _$uspsResultsDiv
         )
     );
 
