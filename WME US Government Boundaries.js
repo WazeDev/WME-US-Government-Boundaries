@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2019.01.03.001
+// @version         2019.04.03.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -24,10 +24,9 @@
 /* global turf */
 /* global WazeWrap */
 /* global localStorage */
-/* global alert */
 
+const UPDATE_MESSAGE = '';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
-const ALERT_UPDATE = false;
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
 const TIME_ZONES_LAYER_URL = 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Time_Zones/FeatureServer/0/';
@@ -89,15 +88,6 @@ const USPS_ROUTES_STYLE = {
     strokeDashstyle: 'solid',
     strokeWidth: '${strokeWidth}'
 };
-const SCRIPT_VERSION = GM_info.script.version;
-const SCRIPT_VERSION_CHANGES = [
-    GM_info.script.name,
-    `v${SCRIPT_VERSION}`,
-    '',
-    'What\'s New',
-    '------------------------------'
-    // add new stuff here
-].join('\n');
 let _zipsLayer;
 let _countiesLayer;
 let _uspsRoutesLayer;
@@ -143,7 +133,6 @@ function loadSettings() {
 
 function saveSettings() {
     if (localStorage) {
-        _settings.lastVersion = SCRIPT_VERSION;
         _settings.layers.zips.visible = _zipsLayer.visibility;
         _settings.layers.counties.visible = _countiesLayer.visibility;
         _settings.layers.timeZones.visible = _timeZonesLayer.visibility;
@@ -527,10 +516,13 @@ function onClearRoutesButtonClick() {
 }
 
 function showScriptInfoAlert() {
-    /* Check version and alert on update */
-    if (ALERT_UPDATE && SCRIPT_VERSION !== _settings.lastVersion) {
-        alert(SCRIPT_VERSION_CHANGES);
-    }
+    WazeWrap.Interface.ShowScriptUpdate(
+        GM_info.script.name,
+        GM_info.script.version,
+        UPDATE_MESSAGE,
+        'https://greasyfork.org/en/scripts/25631-wme-us-government-boundaries',
+        'https://www.waze.com/forum/viewtopic.php?f=819&t=213344'
+    );
 }
 
 function initLayers() {
@@ -640,14 +632,7 @@ function initTab() {
     });
 }
 
-function init() {
-    loadSettings();
-
-    initLayers();
-    initTab();
-    showScriptInfoAlert();
-    fetchBoundaries();
-
+function initUspsRoutes() {
     _$uspsResultsDiv = $('<div>', { id: 'usps-route-results', style: 'margin-top:3px;' });
     _$getRoutesButton = $('<button>', { id: 'get-usps-routes', style: 'height:23px;' }).text('Get USPS routes');
     $('#sidebar').prepend(
@@ -662,13 +647,21 @@ function init() {
             _$uspsResultsDiv
         )
     );
+}
 
+function init() {
+    loadSettings();
+    initLayers();
+    initTab();
+    showScriptInfoAlert();
+    fetchBoundaries();
+    initUspsRoutes();
     log('Initialized.');
 }
 
 function bootstrap(tries = 1) {
     if (W && W.loginManager && W.loginManager.events && W.loginManager.events.register
-        && W.model && W.model.states && W.model.states.additionalInfo && W.map
+        && W.model && W.model.states && W.model.states.getObjectArray().length && W.map
         && W.loginManager.user && WazeWrap.Ready) {
         log('Initializing...');
         init();
