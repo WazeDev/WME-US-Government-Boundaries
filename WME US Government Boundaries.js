@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name            WME US Government Boundaries
+// @name            WME US Government Boundaries (beta)
 // @namespace       https://greasyfork.org/users/45389
 // @version         2019.07.04.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
@@ -209,7 +209,7 @@ function updateNameDisplay(context) {
                                     }
                                     let citiesToAvoid = json.nonAcceptList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
                                     if (citiesToAvoid.length) {
-                                        citiesToAvoid = `<div style="margin-top: 10px;">Cities names to avoid:</div>${citiesToAvoid}`;
+                                        citiesToAvoid = `<div style="margin-top: 10px;">City names to avoid:</div>${citiesToAvoid}`;
                                     }
                                     // eslint-disable-next-line prefer-template
                                     const message = '<div style="margin-bottom: 10px;">From the <a href="https://tools.usps.com/go/ZipLookupAction_input" target="__blank">USPS "Look Up a ZIP Code" website</a></div>'
