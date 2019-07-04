@@ -209,7 +209,7 @@ function updateNameDisplay(context) {
                                     }
                                     let citiesToAvoid = json.nonAcceptList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
                                     if (citiesToAvoid.length) {
-                                        citiesToAvoid = `<div style="margin-top: 10px;">Cities names to avoid:</div>${citiesToAvoid}`;
+                                        citiesToAvoid = `<div style="margin-top: 10px;">City names to avoid:</div>${citiesToAvoid}`;
                                     }
                                     // eslint-disable-next-line prefer-template
                                     const message = '<div style="margin-bottom: 10px;">From the <a href="https://tools.usps.com/go/ZipLookupAction_input" target="__blank">USPS "Look Up a ZIP Code" website</a></div>'
