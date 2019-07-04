@@ -216,7 +216,7 @@ function updateNameDisplay(context) {
                                         + '<div>Recommended city:</div>'
                                         + `<div style="margin-bottom: 10px; color: #0c1f25;">${json.defaultCity}, ${json.defaultState}</div>`
                                         + otherCities + citiesToAvoid;
-                                    WazeWrap.Alerts.info(null, message, true, true);
+                                    WazeWrap.Alerts.info(null, message, true, false);
                                 }
                             });
                         }),
