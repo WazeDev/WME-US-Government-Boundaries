@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries (beta)
 // @namespace       https://greasyfork.org/users/45389
-// @version         2019.04.03.001
+// @version         2019.07.04.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = '';
+const UPDATE_MESSAGE = 'Click the zip code in the map header to see USPS city recommendations.';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
@@ -170,7 +170,6 @@ function appendCityToZip(zip, cityState, context) {
 function updateNameDisplay(context) {
     const center = W.map.getCenter();
     const mapCenter = new OL.Geometry.Point(center.lon, center.lat);
-    const baseUrl = 'https://tools.usps.com/go/ZipLookupResultsAction!input.action?resultMode=2&companyName=&address1=&address2=&city=&state=Select&urbanCode=&postalCode=';
     let feature;
     let text = '';
     let label;
@@ -184,11 +183,43 @@ function updateNameDisplay(context) {
 
             if (feature.geometry.containsPoint && feature.geometry.containsPoint(mapCenter)) {
                 text = feature.attributes.name;
-                url = `${baseUrl + text}&zip=`;
                 $('<span>', { id: 'zip-text' }).empty().css({ display: 'inline-block' }).append(
-                    $('<a>', { href: url, target: '__blank', title: 'Look up USPS zip code' })
+                    $('<span>', { href: url, target: '__blank', title: 'Look up USPS zip code' })
                         .text(text)
-                        .css({ color: 'white', display: 'inline-block' }),
+                        .css({
+                            color: 'white',
+                            display: 'inline-block',
+                            cursor: 'pointer',
+                            'text-decoration': 'underline'
+                        })
+                        // eslint-disable-next-line no-loop-func
+                        .click(() => {
+                            GM_xmlhttpRequest({
+                                url: 'https://tools.usps.com/tools/app/ziplookup/cityByZip',
+                                headers: { 'Content-type': 'application/x-www-form-urlencoded' },
+                                method: 'POST',
+                                data: `zip=${text}`,
+                                onload: res => {
+                                    // "{"resultStatus":"SUCCESS","zip5":"42748","defaultCity":"HODGENVILLE","defaultState":"KY",
+                                    // "defaultRecordType": "STANDARD", "citiesList": [{ "city": "WHITE CITY", "state": "KY" }], "nonAcceptList": []}"
+                                    const json = JSON.parse(res.responseText);
+                                    let otherCities = json.citiesList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
+                                    if (otherCities.length) {
+                                        otherCities = `<div style="margin-top: 10px;">Other cities recognized for addresses in this ZIP:</div>${otherCities}`;
+                                    }
+                                    let citiesToAvoid = json.nonAcceptList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
+                                    if (citiesToAvoid.length) {
+                                        citiesToAvoid = `<div style="margin-top: 10px;">Cities names to avoid:</div>${citiesToAvoid}`;
+                                    }
+                                    // eslint-disable-next-line prefer-template
+                                    const message = '<div style="margin-bottom: 10px;">From the <a href="https://tools.usps.com/go/ZipLookupAction_input" target="__blank">USPS "Look Up a ZIP Code" website</a></div>'
+                                        + '<div>Recommended city:</div>'
+                                        + `<div style="margin-bottom: 10px; color: #0c1f25;">${json.defaultCity}, ${json.defaultState}</div>`
+                                        + otherCities + citiesToAvoid;
+                                    WazeWrap.Alerts.info(null, message, true, true);
+                                }
+                            });
+                        }),
                 ).appendTo($('#zip-boundary'));
                 if (!context.cancel) {
                     if (ZIP_CITIES[text]) {
@@ -520,7 +551,7 @@ function showScriptInfoAlert() {
         GM_info.script.name,
         GM_info.script.version,
         UPDATE_MESSAGE,
-        'https://greasyfork.org/en/scripts/25631-wme-us-government-boundaries',
+        '',
         'https://www.waze.com/forum/viewtopic.php?f=819&t=213344'
     );
 }
