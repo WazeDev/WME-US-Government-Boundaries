@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name            WME US Government Boundaries (beta)
+// @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
 // @version         2019.07.04.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
