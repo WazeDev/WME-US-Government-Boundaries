@@ -663,6 +663,14 @@ function initTab() {
     });
 }
 
+$('head').append([
+    '<style type="text/css">',
+    'input.usps-text { height: 24px; }',
+    '.usps-address-lookup-buttons-container { margin-top: 6px }',
+    '.usps-address-lookup-results {margin-top: 6px; }',
+    '</style>'
+].join(' '));
+
 function initUspsRoutes() {
     _$uspsResultsDiv = $('<div>', { id: 'usps-route-results', style: 'margin-top:3px;' });
     _$getRoutesButton = $('<button>', { id: 'get-usps-routes', style: 'height:23px;' }).text('Get USPS routes');
@@ -675,6 +683,87 @@ function initUspsRoutes() {
             $('<button>', { id: 'clear-usps-routes', style: 'height:23px; margin-left:4px;' })
                 .text('Clear')
                 .click(onClearRoutesButtonClick),
+            $('<button>', { id: 'usps-address-lookup', style: 'height:23px; float: right; margin-right: 10px;' })
+                .text('Addr Lookup')
+                .click(() => {
+                    if (!$('.submit-address-to-usps').length) {
+                        WazeWrap.Alerts.prompt(null, [
+                            '<table>',
+                            '<tr><td>House #</td><td><input type="text" class="usps-text usps-address-lookup-hn"></td></tr>',
+                            '<tr><td>Street</td><td><input type="text" class="usps-text usps-address-lookup-street"></td></tr>',
+                            '<tr><td>City</td><td><input type="text" class="usps-text usps-address-lookup-city"></td></tr>',
+                            '<tr><td>State</td><td><input type="text" class="usps-text usps-address-lookup-state"></td></tr>',
+                            '</table>',
+                            '<div class="usps-address-lookup-buttons-container">',
+                            '<button class="submit-address-to-usps btn btn-default" style="margin-right: 6px;">Look it up</button>',
+                            '</div>',
+                            '<div class="usps-address-lookup-results"></div>'
+                        ].join(''), '');
+                        $('.toast-wazedev .toast-prompt-input').remove();
+                        $('.toast-wazedev .toast-ok-btn').remove();
+                        $('.submit-address-to-usps')
+                            .after($('.toast-wazedev .btn-danger').text('Close'))
+                            .click(() => {
+                                const encodeText = selector => $(selector).val().trim().replace(/\s+/g, '+');
+                                const hn = encodeText('.usps-address-lookup-hn');
+                                const street = encodeText('.usps-address-lookup-street');
+                                const city = encodeText('.usps-address-lookup-city');
+                                const state = encodeText('.usps-address-lookup-state');
+                                $('.usps-address-lookup-results').empty();
+                                GM_xmlhttpRequest({
+                                    url: 'https://tools.usps.com/tools/app/ziplookup/zipByAddress',
+                                    headers: { 'Content-type': 'application/x-www-form-urlencoded' },
+                                    method: 'POST',
+                                    data: `companyName=&address1=${hn}+${street}&address2=&city=${city}&state=${state}&zip=`,
+                                    onload: res => {
+                                        const result = JSON.parse(res.responseText);
+                                        let resultText;
+                                        switch (result.resultStatus) {
+                                            case 'SUCCESS':
+                                                resultText = '<div>USPS ADDRESSES:</div>';
+                                                resultText = result.addressList
+                                                    .map(addr => `<div>${addr.addressLine1}, ${addr.city}, ${addr.state} ${addr.zip5}</div>`).join('');
+                                                break;
+                                            case 'ADDRESS NOT FOUND':
+                                                resultText = 'Address not found';
+                                                break;
+                                            case 'INVALID-CITY':
+                                                resultText = 'Invalid city';
+                                                break;
+                                            case 'INVALID-STATE':
+                                                resultText = 'Invalid state';
+                                                break;
+                                            default:
+                                                resultText = res.responseText;
+                                                break;
+                                        }
+                                        $('.usps-address-lookup-results').append(resultText);
+                                    }
+                                });
+                            });
+                    }
+
+                    let hn = '';
+                    let street = '';
+                    let city = '';
+                    let state = '';
+                    if (W.selectionManager.hasSelectedFeatures()) {
+                        const model = W.selectionManager.getSelectedFeatures()[0].model;
+                        if (model.type === 'venue' || model.type === 'segment') {
+                            const addr = model.getAddress();
+                            if (!addr.isEmpty()) {
+                                hn = addr.getHouseNumber();
+                                if (!addr.isEmptyStreet()) street = addr.getStreetName();
+                                if (!addr.getCity().isEmpty()) city = addr.getCityName();
+                                if (addr.hasState()) state = addr.getStateName();
+                            }
+                        }
+                    }
+                    $('input.usps-address-lookup-hn').val(hn);
+                    $('input.usps-address-lookup-street').val(street);
+                    $('input.usps-address-lookup-city').val(city);
+                    $('input.usps-address-lookup-state').val(state);
+                }),
             _$uspsResultsDiv
         )
     );
