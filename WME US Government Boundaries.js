@@ -426,7 +426,7 @@ function fetchUspsRoutesFeatures() {
     _$getRoutesButton.attr('disabled', 'true').css({ color: '#888' });
     _$uspsResultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
     _uspsRoutesLayer.removeAllFeatures();
-    GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse });
+    GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse, anonymous: true });
 }
 
 function fetchBoundaries() {
