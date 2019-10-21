@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = 'Fix for new USPS route lookup tool restrictions.';
+const UPDATE_MESSAGE = 'Fix for cross-domain restrictions on USPS route lookup tool.';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
