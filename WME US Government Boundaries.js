@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2019.10.23.001
+// @version         2019.10.24.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -182,7 +182,8 @@ function updateNameDisplay(context) {
             feature = _zipsLayer.features[i];
 
             if (feature.geometry.containsPoint && feature.geometry.containsPoint(mapCenter)) {
-                text = feature.attributes.name;
+                // Substr removes leading ZWJ from the ZIP code label. ZWJ needed to fix map display of ZIP codes with leading zeros.
+                text = feature.attributes.name.substr(1);
                 $('<span>', { id: 'zip-text' }).empty().css({ display: 'inline-block' }).append(
                     $('<span>', { href: url, target: '__blank', title: 'Look up USPS zip code' })
                         .text(text)
@@ -298,10 +299,9 @@ function processBoundaries(boundaries, context, type, nameField) {
         case 'zip':
             layerSettings = _settings.layers.zips;
             layer = _zipsLayer;
-            // Add leading ZWJ character to label to prevent OpenLayers from dropping any leading zeros in ZIP codes.
+            // Append ZWJ character to label to prevent OpenLayers from dropping leading zeros in ZIP codes.
             boundaries.forEach(boundary => {
-                let zipzone = boundary.attributes[nameField];
-                if (zipzone >= 0) zipzone = `‍${zipzone}`;
+                let zipzone = '‍' + boundary.attributes[nameField];
                 boundary.attributes[nameField] = `${zipzone}`;
             });
             break;
