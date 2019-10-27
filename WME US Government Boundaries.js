@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = 'Click the zip code in the map header to see USPS city recommendations.';
+const UPDATE_MESSAGE = 'Fix for cross-domain restrictions on USPS route lookup tool.';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
@@ -432,7 +432,7 @@ function fetchUspsRoutesFeatures() {
     _$getRoutesButton.attr('disabled', 'true').css({ color: '#888' });
     _$uspsResultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
     _uspsRoutesLayer.removeAllFeatures();
-    GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse });
+    GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse, anonymous: true });
 }
 
 function fetchBoundaries() {
