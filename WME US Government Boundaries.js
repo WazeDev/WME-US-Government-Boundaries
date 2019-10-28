@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2019.10.24.001
+// @version         2019.10.29.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = 'Fix for cross-domain restrictions on USPS route lookup tool.';
+const UPDATE_MESSAGE = 'Fix display of ZIP codes with leading zeros.';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
@@ -180,10 +180,8 @@ function updateNameDisplay(context) {
         const onload = res => appendCityToZip(text, $.parseJSON(res.responseText), res.context);
         for (let i = 0; i < _zipsLayer.features.length; i++) {
             feature = _zipsLayer.features[i];
-
             if (feature.geometry.containsPoint && feature.geometry.containsPoint(mapCenter)) {
-                // Substr removes leading ZWJ from the ZIP code label. ZWJ needed to fix map display of ZIP codes with leading zeros.
-                text = feature.attributes.name.substr(1);
+                text = feature.attributes.name.substr(1); // Substr removes leading ZWSP appended to ZIP code label.
                 $('<span>', { id: 'zip-text' }).empty().css({ display: 'inline-block' }).append(
                     $('<span>', { href: url, target: '__blank', title: 'Look up USPS zip code' })
                         .text(text)
@@ -299,9 +297,9 @@ function processBoundaries(boundaries, context, type, nameField) {
         case 'zip':
             layerSettings = _settings.layers.zips;
             layer = _zipsLayer;
-            // Append ZWJ character to label to prevent OpenLayers from dropping leading zeros in ZIP codes.
+            // Append ZWSP character to label to prevent OpenLayers from dropping leading zeros in ZIP codes.
             boundaries.forEach(boundary => {
-                let zipzone = '‍' + boundary.attributes[nameField];
+                let zipzone = '​' + boundary.attributes[nameField];
                 boundary.attributes[nameField] = `${zipzone}`;
             });
             break;
