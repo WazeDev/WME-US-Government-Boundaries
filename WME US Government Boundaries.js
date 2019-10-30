@@ -400,6 +400,8 @@ function processUspsRoutesResponse(res) {
     const routeCount = Object.keys(zipRoutes).length;
     Object.keys(zipRoutes).forEach((zipName, routeIdx) => {
         const route = zipRoutes[zipName];
+		const zipOnly = zipName.substring(zipName.length - 5, zipName.length);
+		alert(zipOnly);
         const paths = route.paths.map(path => {
             const pointList = path.map(point => new OL.Geometry.Point(point[0], point[1]));
             return new OL.Geometry.LineString(pointList);
