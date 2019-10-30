@@ -194,7 +194,7 @@ function updateNameDisplay(context) {
                         })
                         // eslint-disable-next-line no-loop-func
                         .click(() => {
-							lookUpZipCities(text);
+							fetchZipCities(text);
 						}),
                 ).appendTo($('#zip-boundary'));
                 if (!context.cancel) {
@@ -220,34 +220,6 @@ function updateNameDisplay(context) {
             }
         }
     }
-}
-
-function lookUpZipCities(text) {
-	GM_xmlhttpRequest({
-		url: 'https://tools.usps.com/tools/app/ziplookup/cityByZip',
-		headers: { 'Content-type': 'application/x-www-form-urlencoded' },
-		method: 'POST',
-		data: `zip=${text}`,
-		onload: res => {
-			// "{"resultStatus":"SUCCESS","zip5":"42748","defaultCity":"HODGENVILLE","defaultState":"KY",
-			// "defaultRecordType": "STANDARD", "citiesList": [{ "city": "WHITE CITY", "state": "KY" }], "nonAcceptList": []}"
-			const json = JSON.parse(res.responseText);
-			let otherCities = json.citiesList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
-			if (otherCities.length) {
-				otherCities = `<div style="margin-top: 10px;">Other cities recognized for addresses in this ZIP:</div>${otherCities}`;
-			}
-			let citiesToAvoid = json.nonAcceptList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
-			if (citiesToAvoid.length) {
-				citiesToAvoid = `<div style="margin-top: 10px;">City names to avoid:</div>${citiesToAvoid}`;
-			}
-			// eslint-disable-next-line prefer-template
-			const message = '<div style="margin-bottom: 10px;">From the <a href="https://tools.usps.com/go/ZipLookupAction_input" target="__blank">USPS "Look Up a ZIP Code" website</a></div>'
-				+ `<div>${text} - Recommended city:</div>`
-				+ `<div style="margin-bottom: 10px; color: #0c1f25;">${json.defaultCity}, ${json.defaultState}</div>`
-				+ otherCities + citiesToAvoid;
-			WazeWrap.Alerts.info(null, message, true, false);
-		}
-	});
 }
 
 function arcgisFeatureToOLFeature(feature, attributes) {
@@ -428,7 +400,7 @@ function processUspsRoutesResponse(res) {
 					'text-decoration': 'underline'
 				})
 				.click(() => {
-					lookUpZipCities(zipOnly);
+					fetchZipCities(zipOnly);
 				})
             );
         routeIdx++;
@@ -445,6 +417,34 @@ function fetchUspsRoutesFeatures() {
     _$uspsResultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
     _uspsRoutesLayer.removeAllFeatures();
     GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse, anonymous: true });
+}
+
+function fetchZipCities(text) {
+	GM_xmlhttpRequest({
+		url: 'https://tools.usps.com/tools/app/ziplookup/cityByZip',
+		headers: { 'Content-type': 'application/x-www-form-urlencoded' },
+		method: 'POST',
+		data: `zip=${text}`,
+		onload: res => {
+			// "{"resultStatus":"SUCCESS","zip5":"42748","defaultCity":"HODGENVILLE","defaultState":"KY",
+			// "defaultRecordType": "STANDARD", "citiesList": [{ "city": "WHITE CITY", "state": "KY" }], "nonAcceptList": []}"
+			const json = JSON.parse(res.responseText);
+			let otherCities = json.citiesList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
+			if (otherCities.length) {
+				otherCities = `<div style="margin-top: 10px;">Other cities recognized for addresses in this ZIP:</div>${otherCities}`;
+			}
+			let citiesToAvoid = json.nonAcceptList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
+			if (citiesToAvoid.length) {
+				citiesToAvoid = `<div style="margin-top: 10px;">City names to avoid:</div>${citiesToAvoid}`;
+			}
+			// eslint-disable-next-line prefer-template
+			const message = '<div style="margin-bottom: 10px;">From the <a href="https://tools.usps.com/go/ZipLookupAction_input" target="__blank">USPS "Look Up a ZIP Code" website</a></div>'
+				+ `<div>${text} - Recommended city:</div>`
+				+ `<div style="margin-bottom: 10px; color: #0c1f25;">${json.defaultCity}, ${json.defaultState}</div>`
+				+ otherCities + citiesToAvoid;
+			WazeWrap.Alerts.info(null, message, true, false);
+		}
+	});
 }
 
 function fetchBoundaries() {
