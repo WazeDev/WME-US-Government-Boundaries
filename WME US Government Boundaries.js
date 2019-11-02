@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2019.11.01.001
+// @version         2019.11.02.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = '<ul><li>Add USPS city names lookup to USPS Routes results.</li><li>Fix display of ZIP codes with leading zeros.</li></ul>';
+const UPDATE_MESSAGE = '<ul><li>New: Click on USPS routes results to view alternate city names and city names to avoid for each ZIP code.</li><li>Fix display of ZIP codes with leading zeros.</li></ul>';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
