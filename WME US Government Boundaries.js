@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = '<ul><li>New: Click on USPS routes results to view alternate city names and city names to avoid for each ZIP code.</li><li>Fix display of ZIP codes with leading zeros.</li><li>Clarify &quot;USPS recommended city&quot; terminology</ul>';
+const UPDATE_MESSAGE = '<ul><li>New: Click on USPS routes results to view alternate city names and city names to avoid for each ZIP code.</li><li>Fix display of ZIP codes with leading zeros.</li><li>Clarify &quot;USPS recommended city&quot; terminology</li></ul>';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
