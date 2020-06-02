@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2019.11.06.001
+// @version         2020.06.02.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -17,7 +17,7 @@
 // ==/UserScript==
 
 /* global $ */
-/* global OL */
+/* global OpenLayers */
 /* global GM_info */
 /* global W */
 /* global GM_xmlhttpRequest */
@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = '<ul><li>New: Click on USPS routes results to view alternate city names and city names to avoid for each ZIP code.</li><li>Fix display of ZIP codes with leading zeros.</li><li>Clarify &quot;USPS recommended city&quot; terminology</li></ul>';
+const UPDATE_MESSAGE = '<ul><li>New: Click on USPS routes results to view alternate city names and city names to avoid for each ZIP code.</li><li>Fix display of ZIP codes with leading zeros.</li><li>Clarify &quot;USPS recommended city&quot; terminology</li><li>WME compatibility update</li></ul>';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
@@ -169,7 +169,7 @@ function appendCityToZip(zip, cityState, context) {
 
 function updateNameDisplay(context) {
     const center = W.map.getCenter();
-    const mapCenter = new OL.Geometry.Point(center.lon, center.lat);
+    const mapCenter = new OpenLayers.Geometry.Point(center.lon, center.lat);
     let feature;
     let text = '';
     let label;
@@ -226,11 +226,11 @@ function arcgisFeatureToOLFeature(feature, attributes) {
     feature.geometry.rings.forEach(ringIn => {
         const pnts = [];
         for (let i = 0; i < ringIn.length; i++) {
-            pnts.push(new OL.Geometry.Point(ringIn[i][0], ringIn[i][1]));
+            pnts.push(new OpenLayers.Geometry.Point(ringIn[i][0], ringIn[i][1]));
         }
-        rings.push(new OL.Geometry.LinearRing(pnts));
+        rings.push(new OpenLayers.Geometry.LinearRing(pnts));
     });
-    return new OL.Feature.Vector(new OL.Geometry.Polygon(rings), attributes);
+    return new OpenLayers.Feature.Vector(new OpenLayers.Geometry.Polygon(rings), attributes);
 }
 
 function getRingArrayFromFeature(feature) {
@@ -256,10 +256,10 @@ function getLabelPoints(feature) {
             turfPt = turf.pointOnSurface(intersection);
         }
         const turfCoords = turfPt.geometry.coordinates;
-        const pt = new OL.Geometry.Point(turfCoords[0], turfCoords[1]);
+        const pt = new OpenLayers.Geometry.Point(turfCoords[0], turfCoords[1]);
         const { attributes } = feature;
         attributes.label = feature.attributes.name;
-        pts = [new OL.Feature.Vector(pt, attributes)];
+        pts = [new OpenLayers.Feature.Vector(pt, attributes)];
     } else {
         pts = null;
     }
@@ -347,9 +347,9 @@ function getCircleLinearRing() {
         const radians = degree * Math.PI / 180;
         const lon = center.lon + radius * Math.cos(radians);
         const lat = center.lat + radius * Math.sin(radians);
-        points.push(new OL.Geometry.Point(lon, lat));
+        points.push(new OpenLayers.Geometry.Point(lon, lat));
     }
-    return new OL.Geometry.LinearRing(points);
+    return new OpenLayers.Geometry.LinearRing(points);
 }
 
 function getStrokeWidth(feature) {
@@ -383,12 +383,12 @@ function processUspsRoutesResponse(res) {
         const route = zipRoutes[zipName];
 		const zipOnly = zipName.substring(zipName.length - 5, zipName.length);
         const paths = route.paths.map(path => {
-            const pointList = path.map(point => new OL.Geometry.Point(point[0], point[1]));
-            return new OL.Geometry.LineString(pointList);
+            const pointList = path.map(point => new OpenLayers.Geometry.Point(point[0], point[1]));
+            return new OpenLayers.Geometry.LineString(pointList);
         });
         const color = USPS_ROUTE_COLORS[routeIdx];
-        features.push(new OL.Feature.Vector(
-            new OL.Geometry.MultiLineString(paths), {
+        features.push(new OpenLayers.Feature.Vector(
+            new OpenLayers.Geometry.MultiLineString(paths), {
                 strokeWidth: getStrokeWidth,
                 zIndex: routeCount - routeIdx - 1,
                 color
@@ -554,7 +554,7 @@ function onGetRoutesButtonMouseEnter() {
         fillColor: '#ff0',
         fillOpacity: 0.2
     };
-    _circleFeature = new OL.Feature.Vector(getCircleLinearRing(), null, style);
+    _circleFeature = new OpenLayers.Feature.Vector(getCircleLinearRing(), null, style);
     _uspsRoutesLayer.addFeatures([_circleFeature]);
 }
 
@@ -579,21 +579,21 @@ function showScriptInfoAlert() {
 }
 
 function initLayers() {
-    _zipsLayer = new OL.Layer.Vector('US Gov\'t Boundaries - Zip Codes', {
+    _zipsLayer = new OpenLayers.Layer.Vector('US Gov\'t Boundaries - Zip Codes', {
         uniqueName: '__WME_USGB_Zips',
-        styleMap: new OL.StyleMap({ default: ZIPS_STYLE })
+        styleMap: new OpenLayers.StyleMap({ default: ZIPS_STYLE })
     });
-    _countiesLayer = new OL.Layer.Vector('US Gov\'t Boundaries - Counties', {
+    _countiesLayer = new OpenLayers.Layer.Vector('US Gov\'t Boundaries - Counties', {
         uniqueName: '__WME_USGB_Counties',
-        styleMap: new OL.StyleMap({ default: COUNTIES_STYLE })
+        styleMap: new OpenLayers.StyleMap({ default: COUNTIES_STYLE })
     });
-    _timeZonesLayer = new OL.Layer.Vector('US Gov\'t Boundaries - Time Zones', {
+    _timeZonesLayer = new OpenLayers.Layer.Vector('US Gov\'t Boundaries - Time Zones', {
         uniqueName: '__WME_USGB_Time_Zones',
-        styleMap: new OL.StyleMap({ default: TIME_ZONES_STYLE })
+        styleMap: new OpenLayers.StyleMap({ default: TIME_ZONES_STYLE })
     });
-    _uspsRoutesLayer = new OL.Layer.Vector('USPS Routes', {
+    _uspsRoutesLayer = new OpenLayers.Layer.Vector('USPS Routes', {
         uniqueName: '__wmeUSPSroutes',
-        styleMap: new OL.StyleMap({ default: USPS_ROUTES_STYLE })
+        styleMap: new OpenLayers.StyleMap({ default: USPS_ROUTES_STYLE })
     });
 
     _zipsLayer.setOpacity(0.6);
