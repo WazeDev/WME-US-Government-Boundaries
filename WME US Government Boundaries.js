@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = 'Fix for cross-domain restrictions on USPS route lookup tool.';
+const UPDATE_MESSAGE = '<ul><li>New: Click on USPS routes results to view alternate city names and city names to avoid for each ZIP code.</li><li>Fix display of ZIP codes with leading zeros.</li><li>Clarify &quot;USPS recommended city&quot; terminology</li><li>WME compatibility update</li></ul>';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
@@ -180,10 +180,8 @@ function updateNameDisplay(context) {
         const onload = res => appendCityToZip(text, $.parseJSON(res.responseText), res.context);
         for (let i = 0; i < _zipsLayer.features.length; i++) {
             feature = _zipsLayer.features[i];
-
             if (feature.geometry.containsPoint && feature.geometry.containsPoint(mapCenter)) {
-                // Substr removes leading ZWJ from the ZIP code label. ZWJ needed to fix map display of ZIP codes with leading zeros.
-                text = feature.attributes.name.substr(1);
+                text = feature.attributes.name.substr(1); // Substr removes leading ZWSP appended to ZIP code label.
                 $('<span>', { id: 'zip-text' }).empty().css({ display: 'inline-block' }).append(
                     $('<span>', { href: url, target: '__blank', title: 'Look up USPS zip code' })
                         .text(text)
@@ -195,32 +193,8 @@ function updateNameDisplay(context) {
                         })
                         // eslint-disable-next-line no-loop-func
                         .click(() => {
-                            GM_xmlhttpRequest({
-                                url: 'https://tools.usps.com/tools/app/ziplookup/cityByZip',
-                                headers: { 'Content-type': 'application/x-www-form-urlencoded' },
-                                method: 'POST',
-                                data: `zip=${text}`,
-                                onload: res => {
-                                    // "{"resultStatus":"SUCCESS","zip5":"42748","defaultCity":"HODGENVILLE","defaultState":"KY",
-                                    // "defaultRecordType": "STANDARD", "citiesList": [{ "city": "WHITE CITY", "state": "KY" }], "nonAcceptList": []}"
-                                    const json = JSON.parse(res.responseText);
-                                    let otherCities = json.citiesList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
-                                    if (otherCities.length) {
-                                        otherCities = `<div style="margin-top: 10px;">Other cities recognized for addresses in this ZIP:</div>${otherCities}`;
-                                    }
-                                    let citiesToAvoid = json.nonAcceptList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
-                                    if (citiesToAvoid.length) {
-                                        citiesToAvoid = `<div style="margin-top: 10px;">City names to avoid:</div>${citiesToAvoid}`;
-                                    }
-                                    // eslint-disable-next-line prefer-template
-                                    const message = '<div style="margin-bottom: 10px;">From the <a href="https://tools.usps.com/go/ZipLookupAction_input" target="__blank">USPS "Look Up a ZIP Code" website</a></div>'
-                                        + '<div>Recommended city:</div>'
-                                        + `<div style="margin-bottom: 10px; color: #0c1f25;">${json.defaultCity}, ${json.defaultState}</div>`
-                                        + otherCities + citiesToAvoid;
-                                    WazeWrap.Alerts.info(null, message, true, false);
-                                }
-                            });
-                        }),
+							fetchZipCities(text);
+						}),
                 ).appendTo($('#zip-boundary'));
                 if (!context.cancel) {
                     if (ZIP_CITIES[text]) {
@@ -299,10 +273,10 @@ function processBoundaries(boundaries, context, type, nameField) {
         case 'zip':
             layerSettings = _settings.layers.zips;
             layer = _zipsLayer;
-            // Append ZWJ character to label to prevent OpenLayers from dropping leading zeros in ZIP codes.
+            // Append ZWSP character to label to prevent OpenLayers from dropping leading zeros in ZIP codes.
             boundaries.forEach(boundary => {
-                let zipzone = '‍' + boundary.attributes[nameField];
-                boundary.attributes[nameField] = `${zipzone}`;
+                let ziplabel = boundary.attributes[nameField];
+                boundary.attributes[nameField] = `​${ziplabel}`;
             });
             break;
         case 'county':
@@ -388,6 +362,7 @@ function getStrokeWidth(feature) {
 function processUspsRoutesResponse(res) {
     const data = $.parseJSON(res.responseText);
     const routes = data.results[0].value.features;
+    let url;
 
     const zipRoutes = {};
     routes.forEach(route => {
@@ -406,6 +381,7 @@ function processUspsRoutesResponse(res) {
     const routeCount = Object.keys(zipRoutes).length;
     Object.keys(zipRoutes).forEach((zipName, routeIdx) => {
         const route = zipRoutes[zipName];
+		const zipOnly = zipName.substring(zipName.length - 5, zipName.length);
         const paths = route.paths.map(path => {
             const pointList = path.map(point => new OpenLayers.Geometry.Point(point[0], point[1]));
             return new OpenLayers.Geometry.LineString(pointList);
@@ -418,7 +394,19 @@ function processUspsRoutesResponse(res) {
                 color
             }
         ));
-        _$uspsResultsDiv.append($('<div>').text(zipName).css({ color, fontWeight: 'bold' }));
+        _$uspsResultsDiv.append(
+			$('<div>', { href: url, target: '__blank', title: 'Look up USPS zip code' })
+				.text(zipName)
+				.css({
+					color,
+					fontWeight: 'bold',
+					cursor: 'pointer',
+					'text-decoration': 'underline'
+				})
+				.click(() => {
+					fetchZipCities(zipOnly);
+				})
+            );
         routeIdx++;
     });
     _$getRoutesButton.removeAttr('disabled').css({ color: '#000' });
@@ -433,6 +421,34 @@ function fetchUspsRoutesFeatures() {
     _$uspsResultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
     _uspsRoutesLayer.removeAllFeatures();
     GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse, anonymous: true });
+}
+
+function fetchZipCities(text) {
+	GM_xmlhttpRequest({
+		url: 'https://tools.usps.com/tools/app/ziplookup/cityByZip',
+		headers: { 'Content-type': 'application/x-www-form-urlencoded' },
+		method: 'POST',
+		data: `zip=${text}`,
+		onload: res => {
+			// "{"resultStatus":"SUCCESS","zip5":"42748","defaultCity":"HODGENVILLE","defaultState":"KY",
+			// "defaultRecordType": "STANDARD", "citiesList": [{ "city": "WHITE CITY", "state": "KY" }], "nonAcceptList": []}"
+			const json = JSON.parse(res.responseText);
+			let otherCities = json.citiesList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
+			if (otherCities.length) {
+				otherCities = `<div style="margin-top: 10px;">Other cities recognized for addresses in this ZIP:</div>${otherCities}`;
+			}
+			let citiesToAvoid = json.nonAcceptList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
+			if (citiesToAvoid.length) {
+				citiesToAvoid = `<div style="margin-top: 10px;">City names to avoid:</div>${citiesToAvoid}`;
+			}
+			// eslint-disable-next-line prefer-template
+			const message = '<div style="margin-bottom: 10px;">From the <a href="https://tools.usps.com/go/ZipLookupAction_input" target="__blank">USPS "Look Up a ZIP Code" website</a></div>'
+				+ `<div>${text} - USPS recommended city:</div>`
+				+ `<div style="margin-bottom: 10px; color: #0c1f25;">${json.defaultCity}, ${json.defaultState}</div>`
+				+ otherCities + citiesToAvoid;
+			WazeWrap.Alerts.info(null, message, true, false);
+		}
+	});
 }
 
 function fetchBoundaries() {
