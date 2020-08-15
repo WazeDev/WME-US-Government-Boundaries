@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2020.06.02.001
+// @version         2020.08.15.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = '<ul><li>New: Click on USPS routes results to view alternate city names and city names to avoid for each ZIP code.</li><li>Fix display of ZIP codes with leading zeros.</li><li>Clarify &quot;USPS recommended city&quot; terminology</li><li>WME compatibility update</li></ul>';
+const UPDATE_MESSAGE = '<ul><li>New: USPS Routes now returns USPS Recommended City + number of other city names recognized for zip code.</li><li>New: Click on USPS Route result to view recognized city names and those to avoid for each ZIP code.</li><li>Fix display of ZIP codes with leading zeros.</li></ul>';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
@@ -387,6 +387,7 @@ function processUspsRoutesResponse(res) {
             return new OpenLayers.Geometry.LineString(pointList);
         });
         const color = USPS_ROUTE_COLORS[routeIdx];
+        let zipDefaultCity;
         features.push(new OpenLayers.Feature.Vector(
             new OpenLayers.Geometry.MultiLineString(paths), {
                 strokeWidth: getStrokeWidth,
@@ -394,19 +395,36 @@ function processUspsRoutesResponse(res) {
                 color
             }
         ));
-        _$uspsResultsDiv.append(
-			$('<div>', { href: url, target: '__blank', title: 'Look up USPS zip code' })
-				.text(zipName)
-				.css({
-					color,
-					fontWeight: 'bold',
-					cursor: 'pointer',
-					'text-decoration': 'underline'
-				})
-				.click(() => {
-					fetchZipCities(zipOnly);
-				})
-            );
+        GM_xmlhttpRequest({
+            url: 'https://tools.usps.com/tools/app/ziplookup/cityByZip',
+            headers: { 'Content-type': 'application/x-www-form-urlencoded' },
+            method: 'POST',
+            data: `zip=${zipOnly}`,
+            onload: res => {
+                // "{"resultStatus":"SUCCESS","zip5":"42748","defaultCity":"HODGENVILLE","defaultState":"KY",
+                // "defaultRecordType": "STANDARD", "citiesList": [{ "city": "WHITE CITY", "state": "KY" }], "nonAcceptList": []}"
+                const json = JSON.parse(res.responseText);
+                let otherCities = json.citiesList.map(entry => entry.city +', ' +entry.state);
+                let otherCitiesQty = "";
+                if (otherCities.length) {
+                    otherCitiesQty = " (+" + otherCities.length + " other)";
+                }
+                zipDefaultCity = json.defaultCity + ', ' + json.defaultState + ' ' + zipOnly + otherCitiesQty;
+                _$uspsResultsDiv.append(
+                    $('<div>', { href: url, target: '__blank', title: 'Look up USPS zip code city names' })
+                    .text(zipDefaultCity)
+                    .css({
+                        color,
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        'text-decoration': 'underline'
+                    })
+                    .click(() => {
+                        fetchZipCities(zipOnly);
+                    })
+                );
+            }
+        });
         routeIdx++;
     });
     _$getRoutesButton.removeAttr('disabled').css({ color: '#000' });
