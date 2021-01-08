@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2020.06.02.001
+// @version         2021.01.07.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -25,10 +25,10 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = 'Fix for cross-domain restrictions on USPS route lookup tool.';
+const UPDATE_MESSAGE = 'Updated to display county boundaries from 2020 census data. Welcome to this decade, census data.';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/4/';
-const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2010/State_County/MapServer/1/';
+const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/State_County/MapServer/1/';
 const TIME_ZONES_LAYER_URL = 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Time_Zones/FeatureServer/0/';
 const USPS_ROUTE_COLORS = ['#f00', '#0a0', '#00f', '#a0a', '#6c82cb', '#0aa'];
 const USPS_ROUTES_URL_TEMPLATE = 'https://gis.usps.com/arcgis/rest/services/EDDM/selectNear/GPServer/routes/execute?f=json&env%3AoutSR=102100&'
@@ -301,7 +301,7 @@ function processBoundaries(boundaries, context, type, nameField) {
             layer = _zipsLayer;
             // Append ZWJ character to label to prevent OpenLayers from dropping leading zeros in ZIP codes.
             boundaries.forEach(boundary => {
-                let zipzone = '‍' + boundary.attributes[nameField];
+                const zipzone = '‍' + boundary.attributes[nameField];
                 boundary.attributes[nameField] = `${zipzone}`;
             });
             break;
