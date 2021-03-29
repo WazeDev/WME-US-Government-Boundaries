@@ -485,7 +485,7 @@ function fetchBoundaries() {
             method: 'GET',
             datatype: 'json',
             success(data) {
-                processBoundaries(data.features, this, 'timeZone', 'ZONE', 'ZONE');
+                processBoundaries($.parseJSON(data).features, this, 'timeZone', 'ZONE', 'ZONE');
             }
         });
     }
