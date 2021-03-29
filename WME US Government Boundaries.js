@@ -462,7 +462,7 @@ function fetchBoundaries() {
             context,
             method: 'GET',
             datatype: 'json',
-            success(data) { processBoundaries($.parseJSON(data).features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
+            success(data) { processBoundaries(data.features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
         });
     }
     if (_settings.layers.counties.visible) {
@@ -473,7 +473,7 @@ function fetchBoundaries() {
             context,
             method: 'GET',
             datatype: 'json',
-            success(data) { processBoundaries($.parseJSON(data).features, this, 'county', 'NAME', 'NAME'); }
+            success(data) { processBoundaries(data.features, this, 'county', 'NAME', 'NAME'); }
         });
     }
     if (_settings.layers.timeZones.visible) {
@@ -485,7 +485,7 @@ function fetchBoundaries() {
             method: 'GET',
             datatype: 'json',
             success(data) {
-                processBoundaries($.parseJSON(data).features, this, 'timeZone', 'ZONE', 'ZONE');
+                processBoundaries(data.features, this, 'timeZone', 'ZONE', 'ZONE');
             }
         });
     }
