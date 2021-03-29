@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2021.08.01.002
+// @version         2021.29.03.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -462,7 +462,7 @@ function fetchBoundaries() {
             context,
             method: 'GET',
             datatype: 'json',
-            success(data) { processBoundaries($.parseJSON(data).features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
+            success(data) { processBoundaries(data.features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
         });
     }
     if (_settings.layers.counties.visible) {
@@ -473,7 +473,7 @@ function fetchBoundaries() {
             context,
             method: 'GET',
             datatype: 'json',
-            success(data) { processBoundaries($.parseJSON(data).features, this, 'county', 'NAME', 'NAME'); }
+            success(data) { processBoundaries(data.features, this, 'county', 'NAME', 'NAME'); }
         });
     }
     if (_settings.layers.timeZones.visible) {
