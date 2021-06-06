@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2021.03.29.001
+// @version         2021.06.06.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -303,7 +303,7 @@ function processBoundaries(boundaries, context, type, nameField) {
             layer = _zipsLayer;
             // Append ZWJ character to label to prevent OpenLayers from dropping leading zeros in ZIP codes.
             boundaries.forEach(boundary => {
-                const zipzone = '‍' + boundary.attributes[nameField];
+                const zipzone = `‍${boundary.attributes[nameField]}`;
                 boundary.attributes[nameField] = `${zipzone}`;
             });
             break;
@@ -485,7 +485,7 @@ function fetchBoundaries() {
             method: 'GET',
             datatype: 'json',
             success(data) {
-                processBoundaries($.parseJSON(data).features, this, 'timeZone', 'ZONE', 'ZONE');
+                processBoundaries(data.features, this, 'timeZone', 'ZONE', 'ZONE');
             }
         });
     }
