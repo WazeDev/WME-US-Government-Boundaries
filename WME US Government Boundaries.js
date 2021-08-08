@@ -27,8 +27,7 @@
 
 const UPDATE_MESSAGE = '';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
-// As of 1/8/2021, ZIP code tabulation areas are still based on 2010 census data even though the URL shows 2020.
-// I don't know if/when they will update this data.
+// As of 8/8/2021, ZIP code tabulation areas are showing as 1/1/2020.
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/1/';
 const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/State_County/MapServer/1/';
 const TIME_ZONES_LAYER_URL = 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Time_Zones/FeatureServer/0/';
