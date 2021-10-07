@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2021.09.24.001
+// @version         2021.10.07.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = '';
+const UPDATE_MESSAGE = 'fix ZIP/City display in new WME';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 // As of 8/8/2021, ZIP code tabulation areas are showing as 1/1/2020.
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/1/';
@@ -447,7 +447,7 @@ function fetchBoundaries() {
     const context = { callCount: 0, cancel: false };
     PROCESS_CONTEXTS.push(context);
     $('.us-boundary-region').remove();
-    $('.loading-indicator-region').before(
+    $('.location-info-region').after(
         $('<div>', { id: 'county-boundary', class: 'us-boundary-region' })
             .css({ color: 'white', float: 'left', marginLeft: '10px' }),
         $('<div>', { id: 'zip-boundary', class: 'us-boundary-region' })
