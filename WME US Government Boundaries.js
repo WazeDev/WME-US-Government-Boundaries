@@ -89,6 +89,9 @@ const USPS_ROUTES_STYLE = {
     strokeDashstyle: 'solid',
     strokeWidth: '${strokeWidth}'
 };
+const COUNTIES_MIN_ZOOM = 10;
+const ZIPS_MIN_ZOOM = 12;
+const TIME_ZONES_MIN_ZOOM = 0;
 let _zipsLayer;
 let _countiesLayer;
 let _uspsRoutesLayer;
@@ -134,9 +137,6 @@ function loadSettings() {
 
 function saveSettings() {
     if (localStorage) {
-        _settings.layers.zips.visible = _zipsLayer.visibility;
-        _settings.layers.counties.visible = _countiesLayer.visibility;
-        _settings.layers.timeZones.visible = _timeZonesLayer.visibility;
         localStorage.setItem(SETTINGS_STORE_NAME, JSON.stringify(_settings));
         log('Settings saved');
     }
@@ -453,71 +453,113 @@ function fetchBoundaries() {
         $('<div>', { id: 'zip-boundary', class: 'us-boundary-region' })
             .css({ color: 'white', float: 'left', marginLeft: '10px' })
     );
-    if (_settings.layers.zips.visible) {
-        url = getUrl(ZIPS_LAYER_URL, extent, zoom, ['ZCTA5']);
-        context.callCount++;
-        $.ajax({
-            url,
-            context,
-            method: 'GET',
-            datatype: 'json',
-            success(data) { processBoundaries(data.features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
-        });
+    if (zoom < ZIPS_MIN_ZOOM) {
+        _zipsLayer.setVisibility(false);
     }
-    if (_settings.layers.counties.visible) {
-        url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME']);
-        context.callCount++;
-        $.ajax({
-            url,
-            context,
-            method: 'GET',
-            datatype: 'json',
-            success(data) { processBoundaries(data.features, this, 'county', 'NAME', 'NAME'); }
-        });
+    else {
+        _zipsLayer.setVisibility(_settings.layers.zips.visible);
+        if (_settings.layers.zips.visible) {
+            url = getUrl(ZIPS_LAYER_URL, extent, zoom, ['ZCTA5']);
+            context.callCount++;
+            $.ajax({
+                url,
+                context,
+                method: 'GET',
+                datatype: 'json',
+                success(data) { processBoundaries(data.features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
+            });
+        }
     }
-    if (_settings.layers.timeZones.visible) {
-        url = getUrl(TIME_ZONES_LAYER_URL, extent, zoom, ['ZONE']);
-        context.callCount++;
-        $.ajax({
-            url,
-            context,
-            method: 'GET',
-            datatype: 'json',
-            success(data) {
-                processBoundaries(data.features, this, 'timeZone', 'ZONE', 'ZONE');
-            }
-        });
+    if (zoom < COUNTIES_MIN_ZOOM) {
+        _countiesLayer.setVisibility(false);
+    }
+    else {
+        _countiesLayer.setVisibility(_settings.layers.counties.visible);
+        if (_settings.layers.counties.visible) {
+            url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME']);
+            context.callCount++;
+            $.ajax({
+                url,
+                context,
+                method: 'GET',
+                datatype: 'json',
+                success(data) { processBoundaries(data.features, this, 'county', 'NAME', 'NAME'); }
+            });
+        }
+    }
+    if (zoom < TIME_ZONES_MIN_ZOOM) {
+        _timeZonesLayer.setVisibility(false)
+    }
+    else {
+        _timeZonesLayer.setVisibility(_settings.layers.timeZones.visible);
+        if (_settings.layers.timeZones.visible) {
+            url = getUrl(TIME_ZONES_LAYER_URL, extent, zoom, ['ZONE']);
+            context.callCount++;
+            $.ajax({
+                url,
+                context,
+                method: 'GET',
+                datatype: 'json',
+                success(data) {
+                    processBoundaries(data.features, this, 'timeZone', 'ZONE', 'ZONE');
+                }
+            });
+        }
     }
 }
 
 function onZipsLayerVisibilityChanged() {
-    _settings.layers.zips.visible = _zipsLayer.visibility;
-    saveSettings();
     fetchBoundaries();
 }
 
 function onCountiesLayerVisibilityChanged() {
-    _settings.layers.counties.visible = _countiesLayer.visibility;
-    saveSettings();
     fetchBoundaries();
 }
 
 function onTimeZonesLayerVisibilityChanged() {
-    _settings.layers.timeZones.visible = _timeZonesLayer.visibility;
-    saveSettings();
     fetchBoundaries();
 }
 
 function onZipsLayerToggleChanged(checked) {
-    _zipsLayer.setVisibility(checked);
+    const zoom = W.map.getZoom();
+    if (zoom < ZIPS_MIN_ZOOM) {
+        _settings.layers.zips.visible = checked;
+        _zipsLayer.setVisibility(false);
+        saveSettings();
+    }
+    else {
+        _settings.layers.zips.visible = checked;
+        _zipsLayer.setVisibility(checked);
+        saveSettings();
+    }
 }
 
 function onCountiesLayerToggleChanged(checked) {
-    _countiesLayer.setVisibility(checked);
+    const zoom = W.map.getZoom();
+    if (zoom < COUNTIES_MIN_ZOOM) {
+        _settings.layers.counties.visible = checked;
+        _countiesLayer.setVisibility(false);
+        saveSettings();
+    }
+    else {
+        _settings.layers.counties.visible = checked;
+        _countiesLayer.setVisibility(checked);
+        saveSettings();
+    }
 }
 
 function onTimeZonesLayerToggleChanged(checked) {
-    _timeZonesLayer.setVisibility(checked);
+    const zoom = W.map.getZoom();
+    if (zoom < TIME_ZONES_MIN_ZOOM) {
+        _settings.layers.timeZones.visible = checked;
+        _timeZonesLayer.setVisibility(false);
+        saveSettings();
+    }
+    else {
+        _settings.layers.timeZones.visible = checked;
+        _timeZonesLayer.setVisibility(checked);
+        saveSettings();
+    }
 }
 
 function onDynamicLabelsCheckboxChanged(settingName, checkboxId) {
@@ -688,6 +730,7 @@ function initUspsRoutes() {
 }
 
 function init() {
+
     loadSettings();
     initLayers();
     initTab();
