@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2022.07.24.001
+// @version         2022.07.24.002
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -25,7 +25,7 @@
 /* global WazeWrap */
 /* global localStorage */
 
-const UPDATE_MESSAGE = 'fix ZIP/City display in new WME';
+const UPDATE_MESSAGE = '';
 const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
 // As of 8/8/2021, ZIP code tabulation areas are showing as 1/1/2020.
 const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/1/';
