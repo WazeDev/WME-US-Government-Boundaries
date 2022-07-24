@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2021.10.07.001
+// @version         2022.07.24.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -38,6 +38,11 @@ const USPS_ROUTES_URL_TEMPLATE = 'https://gis.usps.com/arcgis/rest/services/EDDM
     + '102100%2C%22latestWkid%22%3A3857%7D%7D%7D%5D%2C%22sr%22%3A%7B%22wkid%22%3A102100%2C%22latestWkid'
     + '%22%3A3857%7D%7D&Distance={radius}&Rte_Box=R&userName=EDDM';
 const USPS_ROUTES_RADIUS = 0.5; // miles
+
+// Min zoom caps to prevent displaying too many zip and county boundaries (overload user's browser)
+const MIN_COUNTIES_ZOOM = 11;
+const MIN_ZIPS_ZOOM = 12;
+
 const PROCESS_CONTEXTS = [];
 const ZIP_CITIES = {};
 const ZIPS_STYLE = {
@@ -454,26 +459,36 @@ function fetchBoundaries() {
             .css({ color: 'white', float: 'left', marginLeft: '10px' })
     );
     if (_settings.layers.zips.visible) {
-        url = getUrl(ZIPS_LAYER_URL, extent, zoom, ['ZCTA5']);
-        context.callCount++;
-        $.ajax({
-            url,
-            context,
-            method: 'GET',
-            datatype: 'json',
-            success(data) { processBoundaries(data.features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
-        });
+        if (zoom > MIN_ZIPS_ZOOM) {
+            url = getUrl(ZIPS_LAYER_URL, extent, zoom, ['ZCTA5']);
+            context.callCount++;
+            $.ajax({
+                url,
+                context,
+                method: 'GET',
+                datatype: 'json',
+                success(data) { processBoundaries(data.features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
+            });
+        } else {
+            // clear zips if zoomed out too far
+            processBoundaries([], this, 'zip', 'ZCTA5', 'ZCTA5');
+        }
     }
     if (_settings.layers.counties.visible) {
-        url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME']);
-        context.callCount++;
-        $.ajax({
-            url,
-            context,
-            method: 'GET',
-            datatype: 'json',
-            success(data) { processBoundaries(data.features, this, 'county', 'NAME', 'NAME'); }
-        });
+        if (zoom > MIN_COUNTIES_ZOOM) {
+            url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME']);
+            context.callCount++;
+            $.ajax({
+                url,
+                context,
+                method: 'GET',
+                datatype: 'json',
+                success(data) { processBoundaries(data.features, this, 'county', 'NAME', 'NAME'); }
+            });
+        } else {
+            // clear counties if zoomed out too far
+            processBoundaries([], this, 'county', 'NAME', 'NAME');
+        }
     }
     if (_settings.layers.timeZones.visible) {
         url = getUrl(TIME_ZONES_LAYER_URL, extent, zoom, ['ZONE']);
