@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2022.08.05.001
+// @version         2022.11.03.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -688,7 +688,7 @@ function initTab() {
 function initUspsRoutes() {
     _$uspsResultsDiv = $('<div>', { id: 'usps-route-results', style: 'margin-top:3px;' });
     _$getRoutesButton = $('<button>', { id: 'get-usps-routes', style: 'height:23px;' }).text('Get USPS routes');
-    $('#sidebar').prepend(
+    $('#user-info > div.flex-parent').prepend(
         $('<div>', { style: 'margin-left:10px;' }).append(
             _$getRoutesButton
                 .click(onGetRoutesButtonClick)
