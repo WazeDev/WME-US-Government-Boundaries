@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2022.11.22.001
+// @version         2023.01.02.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -16,14 +16,12 @@
 // @connect         arcgis.com
 // ==/UserScript==
 
-/* global $ */
 /* global OpenLayers */
 /* global GM_info */
 /* global W */
 /* global GM_xmlhttpRequest */
 /* global turf */
 /* global WazeWrap */
-/* global localStorage */
 
 (function() {
     'use strict';
@@ -108,6 +106,9 @@
 
     function log(message) {
         console.log('USGB:', message);
+    }
+    function logError(message) {
+        console.error('USBG:', message);
     }
 
     // Recursively checks the settings object and fills in missing properties from the
@@ -215,6 +216,7 @@
                                         const json = JSON.parse(res.responseText);
                                         let otherCities = json.citiesList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
                                         if (otherCities.length) {
+                                            // eslint-disable-next-line max-len
                                             otherCities = `<div style="margin-top: 10px;">Other cities recognized for addresses in this ZIP:</div>${otherCities}`;
                                         }
                                         let citiesToAvoid = json.nonAcceptList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
@@ -229,7 +231,7 @@
                                         WazeWrap.Alerts.info(null, message, true, false);
                                     }
                                 });
-                            }),
+                            })
                     ).appendTo($('#zip-boundary'));
                     if (!context.cancel) {
                         if (ZIP_CITIES[text]) {
@@ -474,7 +476,7 @@
                 });
             } else {
                 // clear zips if zoomed out too far
-                processBoundaries([], this, 'zip', 'ZCTA5', 'ZCTA5');
+                processBoundaries([], context, 'zip', 'ZCTA5', 'ZCTA5');
             }
         }
         if (_settings.layers.counties.visible) {
@@ -490,7 +492,7 @@
                 });
             } else {
                 // clear counties if zoomed out too far
-                processBoundaries([], this, 'county', 'NAME', 'NAME');
+                processBoundaries([], context, 'county', 'NAME', 'NAME');
             }
         }
         if (_settings.layers.timeZones.visible) {
@@ -622,8 +624,13 @@
         _countiesLayer.events.register('visibilitychanged', null, onCountiesLayerVisibilityChanged);
         _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged);
         W.map.events.register('moveend', W.map, () => {
-            fetchBoundaries();
-            return true;
+            try {
+                fetchBoundaries();
+                return true;
+            } catch (e) {
+                logError(e);
+                return false;
+            }
         }, true);
 
         // Add the layer checkbox to the Layers menu.
