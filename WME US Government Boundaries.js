@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2023.01.02.001
+// @version         2023.02.05.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
-// @require         https://cdnjs.cloudflare.com/ajax/libs/Turf.js/4.7.3/turf.min.js
+// @require         https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js
 // @require         https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
 // @grant           GM_xmlhttpRequest
 // @license         GNU GPLv3
@@ -17,13 +17,11 @@
 // ==/UserScript==
 
 /* global OpenLayers */
-/* global GM_info */
 /* global W */
-/* global GM_xmlhttpRequest */
 /* global turf */
 /* global WazeWrap */
 
-(function() {
+(function main() {
     'use strict';
 
     const UPDATE_MESSAGE = '';
@@ -41,8 +39,29 @@
     const USPS_ROUTES_RADIUS = 0.5; // miles
 
     // Min zoom caps to prevent displaying too many zip and county boundaries (overload user's browser)
-    const MIN_COUNTIES_ZOOM = 11;
+    const MIN_COUNTIES_ZOOM = 8;
     const MIN_ZIPS_ZOOM = 12;
+    const ZOOM_GRANULARITY = {
+        22: 5,
+        21: 5,
+        20: 5,
+        19: 5,
+        18: 5,
+        17: 5,
+        16: 5,
+        15: 10,
+        14: 15,
+        13: 30,
+        12: 80,
+        11: 120,
+        10: 300,
+        9: 1000,
+        8: 2000,
+        7: 3000,
+        6: 5000,
+        5: 12000,
+        4: 20000
+    };
 
     const PROCESS_CONTEXTS = [];
     const ZIP_CITIES = {};
@@ -151,6 +170,12 @@
         }
     }
 
+    function updateMaxAllowableOffset(value) {
+        ZOOM_GRANULARITY[W.map.getZoom()] = value;
+        fetchBoundaries();
+    }
+    unsafeWindow.updateMaxAllowableOffset = updateMaxAllowableOffset;
+
     function getUrl(baseUrl, extent, zoom, outFields) {
         const geometry = {
             xmin: extent.left,
@@ -163,6 +188,7 @@
         let url = `${baseUrl}query?geometry=${encodeURIComponent(geometryStr)}`;
         url += '&returnGeometry=true';
         url += `&outFields=${encodeURIComponent(outFields.join(','))}`;
+        url += `&maxAllowableOffset=${ZOOM_GRANULARITY[W.map.getZoom()]}`;
         // url += '&quantizationParameters={tolerance:100}'; // Don't do this.  It returns relative coordinates.
         url += '&spatialRel=esriSpatialRelIntersects&geometryType=esriGeometryEnvelope&inSR=102100&outSR=3857&f=json';
         return url;
@@ -337,6 +363,7 @@
             // do nothing
         } else {
             layer.removeAllFeatures();
+            let count = 0;
             if (!context.cancel) {
                 boundaries.forEach(boundary => {
                     const attributes = {
@@ -347,6 +374,7 @@
 
                     if (!context.cancel) {
                         const feature = arcgisFeatureToOLFeature(boundary, attributes);
+                        count += feature.geometry.components[0].components.length;
                         layer.addFeatures([feature]);
                         if (layerSettings.dynamicLabels) {
                             const labels = getLabelPoints(feature);
@@ -360,6 +388,7 @@
                     }
                 });
             }
+            console.log(`${type}: ${count}`);
         }
 
         context.callCount--;
@@ -381,7 +410,7 @@
         const points = [];
 
         for (let degree = 0; degree < 360; degree += 5) {
-            const radians = degree * Math.PI / 180;
+            const radians = degree * (Math.PI / 180);
             const lon = center.lon + radius * Math.cos(radians);
             const lat = center.lat + radius * Math.sin(radians);
             points.push(new OpenLayers.Geometry.Point(lon, lat));
@@ -422,13 +451,13 @@
                 return new OpenLayers.Geometry.LineString(pointList);
             });
             const color = USPS_ROUTE_COLORS[routeIdx];
-            features.push(new OpenLayers.Feature.Vector(
-                new OpenLayers.Geometry.MultiLineString(paths), {
-                    strokeWidth: getStrokeWidth,
-                    zIndex: routeCount - routeIdx - 1,
-                    color
-                }
-            ));
+            const lineString = new OpenLayers.Geometry.MultiLineString(paths);
+            const vector = new OpenLayers.Feature.Vector(lineString, {
+                strokeWidth: getStrokeWidth,
+                zIndex: routeCount - routeIdx - 1,
+                color
+            });
+            features.push(vector);
             _$uspsResultsDiv.append($('<div>').text(zipName).css({ color, fontWeight: 'bold' }));
             routeIdx++;
         });
@@ -634,12 +663,9 @@
         }, true);
 
         // Add the layer checkbox to the Layers menu.
-        WazeWrap.Interface.AddLayerCheckbox('display', 'Counties',
-            _settings.layers.counties.visible, onCountiesLayerToggleChanged);
-        WazeWrap.Interface.AddLayerCheckbox('display', 'ZIP codes',
-            _settings.layers.zips.visible, onZipsLayerToggleChanged);
-        WazeWrap.Interface.AddLayerCheckbox('display', 'Time zones',
-            _settings.layers.timeZones.visible, onTimeZonesLayerToggleChanged);
+        WazeWrap.Interface.AddLayerCheckbox('display', 'Counties', _settings.layers.counties.visible, onCountiesLayerToggleChanged);
+        WazeWrap.Interface.AddLayerCheckbox('display', 'ZIP codes', _settings.layers.zips.visible, onZipsLayerToggleChanged);
+        WazeWrap.Interface.AddLayerCheckbox('display', 'Time zones', _settings.layers.timeZones.visible, onTimeZonesLayerToggleChanged);
     }
 
     function initTab() {
@@ -726,9 +752,7 @@
     }
 
     function bootstrap(tries = 1) {
-        if (W && W.loginManager && W.loginManager.events && W.loginManager.events.register
-            && W.model && W.model.states && W.model.states.getObjectArray().length && W.map
-            && W.loginManager.user && WazeWrap.Ready) {
+        if (W && W.map && WazeWrap.Ready) {
             log('Initializing...');
             init();
         } else {
