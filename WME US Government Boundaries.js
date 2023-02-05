@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2023.02.05.002
+// @version         2023.02.06.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -29,6 +29,7 @@
     // As of 8/8/2021, ZIP code tabulation areas are showing as 1/1/2020.
     const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/2/';
     const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/State_County/MapServer/1/';
+    const STATES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/State_County/MapServer/0/';
     const TIME_ZONES_LAYER_URL = 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Time_Zones/FeatureServer/0/';
     const USPS_ROUTE_COLORS = ['#f00', '#0a0', '#00f', '#a0a', '#6c82cb', '#0aa'];
     const USPS_ROUTES_URL_TEMPLATE = 'https://gis.usps.com/arcgis/rest/services/EDDM/selectNear/GPServer/routes/execute?f=json&env%3AoutSR=102100&'
@@ -39,7 +40,7 @@
     const USPS_ROUTES_RADIUS = 0.5; // miles
 
     // Min zoom caps to prevent displaying too many zip and county boundaries (overload user's browser)
-    const MIN_COUNTIES_ZOOM = 8;
+    const MIN_COUNTIES_ZOOM = 9;
     const MIN_ZIPS_ZOOM = 12;
     const ZOOM_GRANULARITY = {
         22: 5,
@@ -94,6 +95,21 @@
         labelOutlineColor: 'black',
         labelOutlineWidth: 2
     };
+    const STATES_STYLE = {
+        strokeColor: 'blue',
+        strokeOpacity: 1,
+        strokeWidth: 6,
+        strokeDashstyle: 'solid',
+        fillOpacity: 0,
+        fontSize: '18px',
+        fontFamily: 'Arial',
+        fontWeight: 'bold',
+        fontColor: 'blue',
+        label: '${label}',
+        labelYOffset: 20,
+        labelOutlineColor: 'lightblue',
+        labelOutlineWidth: 2
+    };
     const TIME_ZONES_STYLE = {
         strokeColor: '#f85',
         strokeOpacity: 1,
@@ -116,6 +132,7 @@
     };
     let _zipsLayer;
     let _countiesLayer;
+    let _statesLayer;
     let _uspsRoutesLayer;
     let _timeZonesLayer;
     let _circleFeature;
@@ -147,7 +164,8 @@
         const defaultSettings = {
             lastVersion: null,
             layers: {
-                zips: { visible: true, dynamicLabels: false, junk: 123.42 },
+                zips: { visible: true, dynamicLabels: false },
+                states: { visible: true, dynamicLabels: false },
                 counties: { visible: true, dynamicLabels: true },
                 timeZones: { visible: true, dynamicLabels: true }
             }
@@ -165,6 +183,7 @@
             _settings.layers.zips.visible = _zipsLayer.visibility;
             _settings.layers.counties.visible = _countiesLayer.visibility;
             _settings.layers.timeZones.visible = _timeZonesLayer.visibility;
+            _settings.layers.states.visible = _statesLayer.visibility;
             localStorage.setItem(SETTINGS_STORE_NAME, JSON.stringify(_settings));
             log('Settings saved');
         }
@@ -280,14 +299,29 @@
 
     function arcgisFeatureToOLFeature(feature, attributes) {
         const rings = [];
+        const e = W.map.getExtent();
+        const width = e.right - e.left;
+        const height = e.top - e.bottom;
+        const expandBy = 2;
+        const clipBox = [
+            e.left - width * expandBy,
+            e.bottom - height * expandBy,
+            e.right + width * expandBy,
+            e.top + height * expandBy
+        ];
+
         feature.geometry.rings.forEach(ringIn => {
-            const pnts = [];
-            for (let i = 0; i < ringIn.length; i++) {
-                pnts.push(new OpenLayers.Geometry.Point(ringIn[i][0], ringIn[i][1]));
+            const polygon = turf.polygon([ringIn]);
+            const clippedCoordinates = turf.bboxClip(polygon, clipBox).geometry.coordinates[0];
+            if (clippedCoordinates && clippedCoordinates.length > 0) {
+                const points = clippedCoordinates.map(coord => new OpenLayers.Geometry.Point(coord[0], coord[1]));
+                rings.push(new OpenLayers.Geometry.LinearRing(points));
             }
-            rings.push(new OpenLayers.Geometry.LinearRing(pnts));
         });
-        return new OpenLayers.Feature.Vector(new OpenLayers.Geometry.Polygon(rings), attributes);
+        if (rings.length > 0) {
+            return new OpenLayers.Feature.Vector(new OpenLayers.Geometry.Polygon(rings), attributes);
+        }
+        return null;
     }
 
     function getRingArrayFromFeature(feature) {
@@ -326,6 +360,7 @@
     function processBoundaries(boundaries, context, type, nameField) {
         let layer;
         let layerSettings;
+        let style;
         switch (type) {
             case 'zip':
                 layerSettings = _settings.layers.zips;
@@ -339,6 +374,51 @@
             case 'county':
                 layerSettings = _settings.layers.counties;
                 layer = _countiesLayer;
+                style = layer.styleMap.styles.default.defaultStyle;
+                if (W.map.getZoom() <= 9) {
+                    style.fontSize = '16px';
+                    style.strokeWidth = 3;
+                    boundaries.forEach(boundary => {
+                        const name = boundary.attributes[nameField].replace(/\s(County|Parish)/, '');
+                        boundary.attributes[nameField] = name;
+                    });
+                } else {
+                    style.fontSize = '18px';
+                    style.strokeWidth = 6;
+                }
+                break;
+            case 'state':
+                layerSettings = _settings.layers.states;
+                layer = _statesLayer;
+                style = STATES_STYLE;
+                if (W.map.getZoom() < 5) {
+                    layerSettings.dynamicLabels = false;
+                    style.strokeWidth = 1;
+                    style.fontSize = '14px';
+                    boundaries.forEach(boundary => {
+                        boundary.attributes[nameField] = '';
+                    });
+                } else if (W.map.getZoom() <= 6) {
+                    layerSettings.dynamicLabels = false;
+                    style.strokeWidth = 3;
+                    style.fontSize = '14px';
+                } else if (W.map.getZoom() <= 11) {
+                    style.strokeWidth = 2;
+                    style.fontSize = '16px';
+                    layerSettings.dynamicLabels = true;
+                } else if (W.map.getZoom() <= 15) {
+                    style.strokeWidth = 3;
+                    style.fontSize = '18px';
+                    layerSettings.dynamicLabels = true;
+                } else {
+                    style.strokeWidth = 4;
+                    style.fontSize = '18px';
+                    layerSettings.dynamicLabels = true;
+                    boundaries.forEach(boundary => {
+                        boundary.attributes[nameField] = '';
+                    });
+                }
+                layer = _statesLayer;
                 break;
             case 'timeZone':
                 layerSettings = _settings.layers.timeZones;
@@ -357,7 +437,6 @@
             // do nothing
         } else {
             layer.removeAllFeatures();
-            let count = 0;
             if (!context.cancel) {
                 boundaries.forEach(boundary => {
                     const attributes = {
@@ -368,15 +447,16 @@
 
                     if (!context.cancel) {
                         const feature = arcgisFeatureToOLFeature(boundary, attributes);
-                        count += feature.geometry.components[0].components.length;
-                        layer.addFeatures([feature]);
-                        if (layerSettings.dynamicLabels) {
-                            const labels = getLabelPoints(feature);
-                            if (labels) {
-                                labels.forEach(labelFeature => {
-                                    labelFeature.attributes.type = 'label';
-                                });
-                                layer.addFeatures(labels);
+                        if (feature) {
+                            layer.addFeatures([feature]);
+                            if (layerSettings.dynamicLabels) {
+                                const labels = getLabelPoints(feature);
+                                if (labels) {
+                                    labels.forEach(labelFeature => {
+                                        labelFeature.attributes.type = 'label';
+                                    });
+                                    layer.addFeatures(labels);
+                                }
                             }
                         }
                     }
@@ -530,6 +610,19 @@
                 }
             });
         }
+        if (_settings.layers.states.visible) {
+            url = getUrl(STATES_LAYER_URL, extent, zoom, ['NAME']);
+            context.callCount++;
+            $.ajax({
+                url,
+                context,
+                method: 'GET',
+                datatype: 'json',
+                success(data) {
+                    processBoundaries(data.features, this, 'state', 'NAME', 'NAME');
+                }
+            });
+        }
     }
 
     function onZipsLayerVisibilityChanged() {
@@ -540,6 +633,12 @@
 
     function onCountiesLayerVisibilityChanged() {
         _settings.layers.counties.visible = _countiesLayer.visibility;
+        saveSettings();
+        fetchBoundaries();
+    }
+
+    function onStatesLayerVisibilityChanged() {
+        _settings.layers.states.visible = _statesLayer.visibility;
         saveSettings();
         fetchBoundaries();
     }
@@ -556,6 +655,10 @@
 
     function onCountiesLayerToggleChanged(checked) {
         _countiesLayer.setVisibility(checked);
+    }
+
+    function onStatesLayerToggleChanged(checked) {
+        _statesLayer.setVisibility(checked);
     }
 
     function onTimeZonesLayerToggleChanged(checked) {
@@ -614,6 +717,10 @@
             uniqueName: '__WME_USGB_Counties',
             styleMap: new OpenLayers.StyleMap({ default: COUNTIES_STYLE })
         });
+        _statesLayer = new OpenLayers.Layer.Vector('US Gov\'t Boundaries - States', {
+            uniqueName: '__WME_USGB_States',
+            styleMap: new OpenLayers.StyleMap({ default: STATES_STYLE })
+        });
         _timeZonesLayer = new OpenLayers.Layer.Vector('US Gov\'t Boundaries - Time Zones', {
             uniqueName: '__WME_USGB_Time_Zones',
             styleMap: new OpenLayers.StyleMap({ default: TIME_ZONES_STYLE })
@@ -625,13 +732,15 @@
 
         _zipsLayer.setOpacity(0.6);
         _countiesLayer.setOpacity(0.6);
+        _statesLayer.setOpacity(0.6);
         _timeZonesLayer.setOpacity(0.6);
 
         _zipsLayer.setVisibility(_settings.layers.zips.visible);
         _countiesLayer.setVisibility(_settings.layers.counties.visible);
+        _statesLayer.setVisibility(_settings.layers.states.visible);
         _timeZonesLayer.setVisibility(_settings.layers.timeZones.visible);
 
-        W.map.addLayers([_countiesLayer, _zipsLayer, _timeZonesLayer, _uspsRoutesLayer]);
+        W.map.addLayers([_countiesLayer, _zipsLayer, _timeZonesLayer, _statesLayer, _uspsRoutesLayer]);
 
         // W.map.setLayerIndex(_uspsRoutesMapLayer, W.map.getLayerIndex(W.map.roadLayers[0])-1);
         // HACK to get around conflict with URO+.  If URO+ is fixed, this can be replaced with the setLayerIndex line above.
@@ -644,6 +753,7 @@
 
         _zipsLayer.events.register('visibilitychanged', null, onZipsLayerVisibilityChanged);
         _countiesLayer.events.register('visibilitychanged', null, onCountiesLayerVisibilityChanged);
+        _statesLayer.events.register('visibilitychanged', null, onStatesLayerVisibilityChanged);
         _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged);
         W.map.events.register('moveend', W.map, () => {
             try {
@@ -656,6 +766,7 @@
         }, true);
 
         // Add the layer checkbox to the Layers menu.
+        WazeWrap.Interface.AddLayerCheckbox('display', 'States', _settings.layers.states.visible, onStatesLayerToggleChanged);
         WazeWrap.Interface.AddLayerCheckbox('display', 'Counties', _settings.layers.counties.visible, onCountiesLayerToggleChanged);
         WazeWrap.Interface.AddLayerCheckbox('display', 'ZIP codes', _settings.layers.zips.visible, onZipsLayerToggleChanged);
         WazeWrap.Interface.AddLayerCheckbox('display', 'Time zones', _settings.layers.timeZones.visible, onTimeZonesLayerToggleChanged);
