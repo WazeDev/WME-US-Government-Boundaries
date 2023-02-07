@@ -143,6 +143,9 @@
     function log(message) {
         console.log('USGB:', message);
     }
+    function logDebug(message) {
+        console.log('USGB:', message);
+    }
     function logError(message) {
         console.error('USBG:', message);
     }
@@ -311,10 +314,12 @@
         ];
 
         feature.geometry.rings.forEach(ringIn => {
+            pointCount += ringIn.length;
             const polygon = turf.polygon([ringIn]);
             const clippedCoordinates = turf.bboxClip(polygon, clipBox).geometry.coordinates[0];
             if (clippedCoordinates && clippedCoordinates.length > 0) {
                 const points = clippedCoordinates.map(coord => new OpenLayers.Geometry.Point(coord[0], coord[1]));
+                reducedPointCount += points.length;
                 rings.push(new OpenLayers.Geometry.LinearRing(points));
             }
         });
@@ -357,10 +362,16 @@
         return pts;
     }
 
+    let pointCount;
+    let reducedPointCount;
     function processBoundaries(boundaries, context, type, nameField) {
         let layer;
         let layerSettings;
         let style;
+        let zoom;
+
+        pointCount = 0;
+        reducedPointCount = 0;
         switch (type) {
             case 'zip':
                 layerSettings = _settings.layers.zips;
@@ -388,6 +399,7 @@
                 }
                 break;
             case 'state':
+                zoom = W.map.getZoom();
                 layerSettings = _settings.layers.states;
                 layer = _statesLayer;
                 style = STATES_STYLE;
@@ -417,6 +429,11 @@
                     boundaries.forEach(boundary => {
                         boundary.attributes[nameField] = '';
                     });
+                }
+                if (zoom <= 9) {
+                    style.labelYOffset = 0;
+                } else {
+                    style.labelYOffset = 20;
                 }
                 layer = _statesLayer;
                 break;
@@ -472,7 +489,12 @@
                 PROCESS_CONTEXTS.splice(idx, 1);
             }
         }
+
+        if (W.loginManager && W.loginManager.user.userName === 'MapOMatic') {
+            logDebug(`${type} points: ${pointCount} -> ${reducedPointCount} (${((1.0 - reducedPointCount / pointCount) * 100).toFixed(1)}%)`);
+        }
     }
+
     function getUspsRoutesUrl(lon, lat, radius) {
         return USPS_ROUTES_URL_TEMPLATE.replace('{lon}', lon).replace('{lat}', lat).replace('{radius}', radius);
     }
