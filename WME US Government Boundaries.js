@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2023.02.06.002
+// @version         2023.02.23.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -596,7 +596,13 @@
                     context,
                     method: 'GET',
                     datatype: 'json',
-                    success(data) { processBoundaries(data.features, this, 'zip', 'ZCTA5', 'ZCTA5'); }
+                    success(data) {
+                        if (data.error) {
+                            logError(`ZIP codes layer: ${data.error.message}`);
+                        } else {
+                            processBoundaries(data.features, this, 'zip', 'ZCTA5', 'ZCTA5');
+                        }
+                    }
                 });
             } else {
                 // clear zips if zoomed out too far
@@ -612,7 +618,13 @@
                     context,
                     method: 'GET',
                     datatype: 'json',
-                    success(data) { processBoundaries(data.features, this, 'county', 'NAME', 'NAME'); }
+                    success(data) {
+                        if (data.error) {
+                            logError(`counties layer: ${data.error.message}`);
+                        } else {
+                            processBoundaries(data.features, this, 'county', 'NAME', 'NAME');
+                        }
+                    }
                 });
             } else {
                 // clear counties if zoomed out too far
@@ -628,7 +640,11 @@
                 method: 'GET',
                 datatype: 'json',
                 success(data) {
-                    processBoundaries(data.features, this, 'timeZone', 'ZONE', 'ZONE');
+                    if (data.error) {
+                        logError(`timezones layer: ${data.error.message}`);
+                    } else {
+                        processBoundaries(data.features, this, 'timeZone', 'ZONE', 'ZONE');
+                    }
                 }
             });
         }
@@ -641,7 +657,11 @@
                 method: 'GET',
                 datatype: 'json',
                 success(data) {
-                    processBoundaries(data.features, this, 'state', 'NAME', 'NAME');
+                    if (data.error) {
+                        logError(`states layer: ${data.error.message}`);
+                    } else {
+                        processBoundaries(data.features, this, 'state', 'NAME', 'NAME');
+                    }
                 }
             });
         }
