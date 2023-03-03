@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2023.02.23.001
+// @version         2023.03.03.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -867,14 +867,23 @@
         });
     }
 
+    function onSelectionChanged(evt) {
+        const container = $('#usps-routes-container');
+        if (evt.selected && evt.selected.length && evt.selected[0].model.type === 'segment') {
+            container.show();
+        } else {
+            container.hide();
+        }
+    }
+
     function initUspsRoutes() {
         _$uspsResultsDiv = $('<div>', { id: 'usps-route-results', style: 'margin-top:3px;' });
         _$getRoutesButton = $('<button>', { id: 'get-usps-routes', style: 'height:23px;' }).text('Get USPS routes');
         // TODO: 2022-11-22 - This is temporary to determine which parent element to add the div to, depending on beta or production WME.
         // Remove once new side panel is pushed to production.
-        const $parent = $('wz-navigation-item').length > 0 ? $('#edit-panel') : $('#user-info > div.flex-parent');
+        const $parent = $('wz-navigation-item').length > 0 ? $('#edit-panel > div.contents') : $('#user-info > div.flex-parent');
         $parent.prepend( // '#user-info > div.flex-parent'
-            $('<div>', { style: 'margin-left:10px;margin-top:5px;' }).append(
+            $('<div>', { id: 'usps-routes-container', style: 'margin-left:10px;margin-top:5px;' }).append(
                 _$getRoutesButton
                     .click(onGetRoutesButtonClick)
                     .mouseenter(onGetRoutesButtonMouseEnter)
@@ -885,6 +894,7 @@
                 _$uspsResultsDiv
             )
         );
+        W.selectionManager.events.on('selectionchanged', onSelectionChanged);
     }
 
     function init() {
