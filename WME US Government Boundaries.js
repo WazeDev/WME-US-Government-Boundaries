@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2023.03.03.001
+// @version         2023.03.14.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -854,7 +854,7 @@
             )
         );
 
-        new WazeWrap.Interface.Tab('USGB', $content.html(), () => {
+        WazeWrap.Interface.Tab('USGB', $content.html(), () => {
             $('#usgb-zips-dynamicLabels').prop('checked', _settings.layers.zips.dynamicLabels).change(() => {
                 onDynamicLabelsCheckboxChanged('zips', 'usgb-zips-dynamicLabels');
             });
@@ -864,7 +864,7 @@
             $('#usgb-timezones-dynamicLabels').prop('checked', _settings.layers.counties.dynamicLabels).change(() => {
                 onDynamicLabelsCheckboxChanged('timeZones', 'usgb-timezones-dynamicLabels');
             });
-        });
+        }, null);
     }
 
     function onSelectionChanged(evt) {
