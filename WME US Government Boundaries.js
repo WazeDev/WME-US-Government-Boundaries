@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2023.03.14.001
+// @version         2023.03.21.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -786,8 +786,12 @@
 
         // W.map.setLayerIndex(_uspsRoutesMapLayer, W.map.getLayerIndex(W.map.roadLayers[0])-1);
         // HACK to get around conflict with URO+.  If URO+ is fixed, this can be replaced with the setLayerIndex line above.
-        _uspsRoutesLayer.setZIndex(334);
-        const checkLayerZIndex = () => { if (_uspsRoutesLayer.getZIndex() !== 334) _uspsRoutesLayer.setZIndex(334); };
+        const zIndex = W.map.getLayersByName('satellite_imagery')[0].getZIndex() + 1;
+        _uspsRoutesLayer.setZIndex(zIndex);
+        const checkLayerZIndex = () => {
+            const latestZIndex = W.map.getLayersByName('satellite_imagery')[0].getZIndex() + 1;
+            if (_uspsRoutesLayer.getZIndex() !== latestZIndex) _uspsRoutesLayer.setZIndex(latestZIndex);
+        };
         setInterval(checkLayerZIndex, 100);
         // END HACK
 
