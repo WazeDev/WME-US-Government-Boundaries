@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2023.07.11.001
+// @version         2023.07.19.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -14,6 +14,7 @@
 // @connect         wazex.us
 // @connect         usps.com
 // @connect         arcgis.com
+// @connect         greasyfork.org
 // ==/UserScript==
 
 /* global OpenLayers */
@@ -25,6 +26,10 @@
     'use strict';
 
     const UPDATE_MESSAGE = '';
+    const SCRIPT_NAME = GM_info.script.name;
+    const CURRENT_VERSION = GM_info.script.version;
+    const DOWNLOAD_URL = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
+
     const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
     // As of 8/8/2021, ZIP code tabulation areas are showing as 1/1/2020.
     const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/2/';
@@ -898,7 +903,18 @@
         W.selectionManager.events.on('selectionchanged', onSelectionChanged);
     }
 
+    function loadScriptUpdateMonitor() {
+        try {
+            const updateMonitor = new WazeWrap.Alerts.ScriptUpdateMonitor(SCRIPT_NAME, CURRENT_VERSION, DOWNLOAD_URL, GM_xmlhttpRequest);
+            updateMonitor.start();
+        } catch (ex) {
+            // Report the error, but not a critical failure.
+            console.error(SCRIPT_NAME, ex);
+        }
+    }
+
     function init() {
+        loadScriptUpdateMonitor();
         loadSettings();
         initLayers();
         initTab();
