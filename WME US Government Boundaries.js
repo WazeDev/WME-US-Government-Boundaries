@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2023.07.19.001
+// @version         2024.01.23.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -872,10 +872,10 @@
         }, null);
     }
 
-    function onSelectionChanged(evt) {
+    function onSelectionChanged() {
         const container = $('#usps-routes-container');
-        const m = W.selectionManager.getSelectedDataModelObjects();
-        if (evt.selected && evt.selected.length && m[0].type === 'segment') {
+        const selected = W.selectionManager.getSelectedDataModelObjects();
+        if (selected.length && selected[0].type === 'segment') {
             container.show();
         } else {
             container.hide();
@@ -924,16 +924,13 @@
         log('Initialized.');
     }
 
-    function bootstrap(tries = 1) {
-        if (W && W.map && WazeWrap.Ready) {
-            log('Initializing...');
+    function bootstrap() {
+        if (typeof W === 'object' && W.userscripts?.state.isReady) {
             init();
         } else {
-            if (tries % 20 === 0) log('Bootstrap failed. Trying again...');
-            setTimeout(() => bootstrap(++tries), 250);
+            document.addEventListener('wme-ready', init, { once: true });
         }
     }
 
-    log('Bootstrap...');
     bootstrap();
 }());
