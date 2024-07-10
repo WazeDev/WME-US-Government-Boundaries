@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2024.01.23.001
+// @version         2024.07.10.000
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -43,6 +43,7 @@
         + '102100%2C%22latestWkid%22%3A3857%7D%7D%7D%5D%2C%22sr%22%3A%7B%22wkid%22%3A102100%2C%22latestWkid'
         + '%22%3A3857%7D%7D&Distance={radius}&Rte_Box=R&userName=EDDM';
     const USPS_ROUTES_RADIUS = 0.5; // miles
+    let LAYER_Z_INDEX;
 
     // Min zoom caps to prevent displaying too many zip and county boundaries (overload user's browser)
     const MIN_COUNTIES_ZOOM = 9;
@@ -791,8 +792,9 @@
 
         // W.map.setLayerIndex(_uspsRoutesMapLayer, W.map.getLayerIndex(W.map.roadLayers[0])-1);
         // HACK to get around conflict with URO+.  If URO+ is fixed, this can be replaced with the setLayerIndex line above.
-        _uspsRoutesLayer.setZIndex(336);
-        const checkLayerZIndex = () => { if (_uspsRoutesLayer.getZIndex() !== 336) _uspsRoutesLayer.setZIndex(336); };
+        LAYER_Z_INDEX = W.map.roadLayer.getZIndex() - 1;
+        _uspsRoutesLayer.setZIndex(LAYER_Z_INDEX);
+        const checkLayerZIndex = () => { if (_uspsRoutesLayer.getZIndex() !== LAYER_Z_INDEX) _uspsRoutesLayer.setZIndex(LAYER_Z_INDEX); };
         setInterval(checkLayerZIndex, 100);
         // END HACK
 
