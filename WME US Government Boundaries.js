@@ -918,7 +918,7 @@
     }
 
     function init() {
-        sdk = getWmeSdk({ scriptId: SCRIPT_NAME, scriptName: SCRIPT_NAME });
+        sdk = getWmeSdk({ scriptId: 'wmeUSGovernmentBoundaries', scriptName: SCRIPT_NAME });
         loadScriptUpdateMonitor();
         loadSettings();
         initLayers();
