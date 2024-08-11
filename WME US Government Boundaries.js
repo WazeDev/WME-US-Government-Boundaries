@@ -21,6 +21,7 @@
 /* global W */
 /* global turf */
 /* global WazeWrap */
+/* global getWmeSdk */
 
 (function main() {
     'use strict';
@@ -136,6 +137,7 @@
         strokeDashstyle: 'solid',
         strokeWidth: '${strokeWidth}'
     };
+    let sdk;
     let _zipsLayer;
     let _countiesLayer;
     let _statesLayer;
@@ -496,7 +498,7 @@
             }
         }
 
-        if (W.loginManager && W.loginManager.user.userName === 'MapOMatic') {
+        if (sdk.State.userInfo.userName === 'MapOMatic') {
             logDebug(`${type} points: ${pointCount} -> ${reducedPointCount} (${((1.0 - reducedPointCount / pointCount) * 100).toFixed(1)}%)`);
         }
     }
@@ -916,6 +918,7 @@
     }
 
     function init() {
+        sdk = getWmeSdk({ scriptId: SCRIPT_NAME, scriptName: SCRIPT_NAME });
         loadScriptUpdateMonitor();
         loadSettings();
         initLayers();
@@ -926,11 +929,20 @@
         log('Initialized.');
     }
 
-    function bootstrap() {
-        if (typeof W === 'object' && W.userscripts?.state.isReady) {
+    function onWmeReady(tries = 0) {
+        if (tries === 40) return; // give up
+        if (WazeWrap.Ready) {
             init();
         } else {
-            document.addEventListener('wme-ready', init, { once: true });
+            setTimeout(onWmeReady, 500, ++tries);
+        }
+    }
+
+    function bootstrap() {
+        if (window.getWmeSdk) {
+            onWmeReady();
+        } else {
+            document.addEventListener('wme-ready', onWmeReady, { once: true });
         }
     }
 
