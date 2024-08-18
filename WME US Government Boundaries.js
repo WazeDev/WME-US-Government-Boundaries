@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2024.07.10.000
+// @version         2024.08.18.000
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -306,9 +306,18 @@
         }
     }
 
+    function getOLMapExtent() {
+        let extent = W.map.getExtent();
+        if (Array.isArray(extent)) {
+            extent = new OpenLayers.Bounds(extent);
+            extent.transform('EPSG:4326', 'EPSG:3857');
+        }
+        return extent;
+    }
+
     function arcgisFeatureToOLFeature(feature, attributes) {
         const rings = [];
-        const e = W.map.getExtent();
+        const e = getOLMapExtent();
         const width = e.right - e.left;
         const height = e.top - e.bottom;
         const expandBy = 2;
@@ -342,7 +351,7 @@
     }
 
     function getLabelPoints(feature) {
-        const e = W.map.getExtent();
+        const e = getOLMapExtent();
         const screenPoly = turf.polygon([[
             [e.left, e.top], [e.right, e.top], [e.right, e.bottom], [e.left, e.bottom], [e.left, e.top]
         ]]);
@@ -581,7 +590,7 @@
             PROCESS_CONTEXTS.forEach(context => { context.cancel = true; });
         }
 
-        const extent = W.map.getExtent();
+        const extent = getOLMapExtent();
         const zoom = W.map.getZoom();
         let url;
         const context = { callCount: 0, cancel: false };
