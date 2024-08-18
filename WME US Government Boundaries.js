@@ -138,6 +138,11 @@
         strokeWidth: '${strokeWidth}'
     };
     let sdk;
+    const ZIPS_LAYER_NAME = 'US Gov\'t Boundaries - Zip Codes';
+    const COUNTIES_LAYER_NAME = 'US Gov\'t Boundaries - Counties';
+    const STATES_LAYER_NAME = 'US Gov\'t Boundaries - States';
+    const TIME_ZONES_LAYER_NAME = 'US Gov\'t Boundaries - Time Zones';
+    const USPS_ROUTES_LAYER_NAME = 'USPS Routes';
     let _zipsLayer;
     let _countiesLayer;
     let _statesLayer;
@@ -201,18 +206,20 @@
     }
 
     function getUrl(baseUrl, extent, zoom, outFields) {
+        const extentLeftBottom = turf.toMercator([extent[0], extent[1]]);
+        const extentRightTop = turf.toMercator([extent[2], extent[3]]);
         const geometry = {
-            xmin: extent.left,
-            ymin: extent.bottom,
-            xmax: extent.right,
-            ymax: extent.top,
+            xmin: extentLeftBottom[0],
+            ymin: extentLeftBottom[1],
+            xmax: extentRightTop[0],
+            ymax: extentRightTop[1],
             spatialReference: { wkid: 102100, latestWkid: 3857 }
         };
         const geometryStr = JSON.stringify(geometry);
         let url = `${baseUrl}query?geometry=${encodeURIComponent(geometryStr)}`;
         url += '&returnGeometry=true';
         url += `&outFields=${encodeURIComponent(outFields.join(','))}`;
-        url += `&maxAllowableOffset=${ZOOM_GRANULARITY[W.map.getZoom()]}`;
+        url += `&maxAllowableOffset=${ZOOM_GRANULARITY[sdk.Map.getZoomLevel()]}`;
         // url += '&quantizationParameters={tolerance:100}'; // Don't do this.  It returns relative coordinates.
         url += '&spatialRel=esriSpatialRelIntersects&geometryType=esriGeometryEnvelope&inSR=102100&outSR=3857&f=json';
         return url;
@@ -228,7 +235,7 @@
     }
 
     function updateNameDisplay(context) {
-        const center = W.map.getCenter();
+        const center = sdk.Map.getMapCenter();
         const mapCenter = new OpenLayers.Geometry.Point(center.lon, center.lat);
         let feature;
         let text = '';
@@ -308,22 +315,50 @@
         }
     }
 
-    function arcgisFeatureToOLFeature(feature, attributes) {
+    function arcgisFeatureToGeoJSON(feature, attributes) {
         const rings = [];
-        const e = W.map.getExtent();
-        const width = e.right - e.left;
-        const height = e.top - e.bottom;
+        const e = sdk.Map.getMapExtent();
+        const width = e[2] - e[0];
+        const height = e[3] - e[1];
         const expandBy = 2;
         const clipBox = [
-            e.left - width * expandBy,
-            e.bottom - height * expandBy,
-            e.right + width * expandBy,
-            e.top + height * expandBy
+            e[0] - width * expandBy,
+            e[1] - height * expandBy,
+            e[2] + width * expandBy,
+            e[3] + height * expandBy
         ];
 
         feature.geometry.rings.forEach(ringIn => {
             pointCount += ringIn.length;
-            const polygon = turf.polygon([ringIn]);
+            const polygon = turf.toWgs84(turf.polygon([ringIn]));
+            const clippedCoordinates = turf.bboxClip(polygon, clipBox).geometry.coordinates[0];
+            if (clippedCoordinates?.length) {
+                rings.push(clippedCoordinates);
+            }
+        });
+        if (rings.length > 0) {
+            const geoJsonFeature = turf.polygon(rings, attributes);
+            geoJsonFeature.id = 0;
+            return geoJsonFeature;
+        }
+        return null;
+    }
+    function arcgisFeatureToOLFeature(feature, attributes) {
+        const rings = [];
+        const e = sdk.Map.getMapExtent();
+        const width = e[2] - e[0];
+        const height = e[3] - e[1];
+        const expandBy = 2;
+        const clipBox = [
+            e[0] - width * expandBy,
+            e[1] - height * expandBy,
+            e[2] + width * expandBy,
+            e[3] + height * expandBy
+        ];
+
+        feature.geometry.rings.forEach(ringIn => {
+            pointCount += ringIn.length;
+            const polygon = turf.toWgs84(turf.polygon([ringIn]));
             const clippedCoordinates = turf.bboxClip(polygon, clipBox).geometry.coordinates[0];
             if (clippedCoordinates && clippedCoordinates.length > 0) {
                 const points = clippedCoordinates.map(coord => new OpenLayers.Geometry.Point(coord[0], coord[1]));
@@ -343,32 +378,32 @@
         );
     }
 
-    function getLabelPoints(feature) {
-        const e = W.map.getExtent();
-        const screenPoly = turf.polygon([[
-            [e.left, e.top], [e.right, e.top], [e.right, e.bottom], [e.left, e.bottom], [e.left, e.top]
-        ]]);
-        // The intersect function doesn't seem to like holes in polygons, so assume the
-        // first ring is the outer boundary and ignore any holes.
-        const featurePoly = turf.polygon([getRingArrayFromFeature(feature)[0]]);
-        const intersection = turf.intersect(screenPoly, featurePoly);
-        let pts;
+    // function getLabelPoints(feature) {
+    //     const e = sdk.Map.getMapExtent();
+    //     const screenPoly = turf.polygon([[
+    //         [e[0], e[3]], [e[2], e[3]], [e[2], e[1]], [e[0], e[1]], [e[0], e[3]]
+    //     ]]);
+    //     // The intersect function doesn't seem to like holes in polygons, so assume the
+    //     // first ring is the outer boundary and ignore any holes.
+    //     const featurePoly = turf.polygon([getRingArrayFromFeature(feature)[0]]);
+    //     const intersection = turf.intersect(screenPoly, featurePoly);
+    //     let pts;
 
-        if (intersection && intersection.geometry && intersection.geometry.coordinates) {
-            let turfPt = turf.centerOfMass(intersection);
-            if (!turf.inside(turfPt, intersection)) {
-                turfPt = turf.pointOnSurface(intersection);
-            }
-            const turfCoords = turfPt.geometry.coordinates;
-            const pt = new OpenLayers.Geometry.Point(turfCoords[0], turfCoords[1]);
-            const { attributes } = feature;
-            attributes.label = feature.attributes.name;
-            pts = [new OpenLayers.Feature.Vector(pt, attributes)];
-        } else {
-            pts = null;
-        }
-        return pts;
-    }
+    //     if (intersection && intersection.geometry && intersection.geometry.coordinates) {
+    //         let turfPt = turf.centerOfMass(intersection);
+    //         if (!turf.inside(turfPt, intersection)) {
+    //             turfPt = turf.pointOnSurface(intersection);
+    //         }
+    //         const turfCoords = turfPt.geometry.coordinates;
+    //         const pt = new OpenLayers.Geometry.Point(turfCoords[0], turfCoords[1]);
+    //         const { attributes } = feature;
+    //         attributes.label = feature.attributes.name;
+    //         pts = [new OpenLayers.Feature.Vector(pt, attributes)];
+    //     } else {
+    //         pts = null;
+    //     }
+    //     return pts;
+    // }
 
     let pointCount;
     let reducedPointCount;
@@ -376,7 +411,7 @@
         let layer;
         let layerSettings;
         let style;
-        let zoom;
+        let zoomLevel;
 
         pointCount = 0;
         reducedPointCount = 0;
@@ -394,7 +429,7 @@
                 layerSettings = _settings.layers.counties;
                 layer = _countiesLayer;
                 style = layer.styleMap.styles.default.defaultStyle;
-                if (W.map.getZoom() <= 9) {
+                if (sdk.Map.getZoomLevel() <= 9) {
                     style.fontSize = '16px';
                     style.strokeWidth = 3;
                     boundaries.forEach(boundary => {
@@ -407,26 +442,26 @@
                 }
                 break;
             case 'state':
-                zoom = W.map.getZoom();
+                zoomLevel = sdk.Map.getZoomLevel();
                 layerSettings = _settings.layers.states;
                 layer = _statesLayer;
                 style = STATES_STYLE;
-                if (W.map.getZoom() < 5) {
+                if (zoomLevel < 5) {
                     layerSettings.dynamicLabels = false;
                     style.strokeWidth = 1;
                     style.fontSize = '14px';
                     boundaries.forEach(boundary => {
                         boundary.attributes[nameField] = '';
                     });
-                } else if (W.map.getZoom() <= 6) {
+                } else if (zoomLevel <= 6) {
                     layerSettings.dynamicLabels = false;
                     style.strokeWidth = 3;
                     style.fontSize = '14px';
-                } else if (W.map.getZoom() <= 11) {
+                } else if (zoomLevel <= 11) {
                     style.strokeWidth = 2;
                     style.fontSize = '16px';
                     layerSettings.dynamicLabels = true;
-                } else if (W.map.getZoom() <= 15) {
+                } else if (zoomLevel <= 15) {
                     style.strokeWidth = 3;
                     style.fontSize = '18px';
                     layerSettings.dynamicLabels = true;
@@ -438,7 +473,7 @@
                         boundary.attributes[nameField] = '';
                     });
                 }
-                if (zoom <= 9) {
+                if (zoomLevel <= 9) {
                     style.labelYOffset = 0;
                 } else {
                     style.labelYOffset = 20;
@@ -471,18 +506,19 @@
                     };
 
                     if (!context.cancel) {
-                        const feature = arcgisFeatureToOLFeature(boundary, attributes);
+                        const feature = arcgisFeatureToGeoJSON(boundary, attributes);
                         if (feature) {
-                            layer.addFeatures([feature]);
-                            if (layerSettings.dynamicLabels) {
-                                const labels = getLabelPoints(feature);
-                                if (labels) {
-                                    labels.forEach(labelFeature => {
-                                        labelFeature.attributes.type = 'label';
-                                    });
-                                    layer.addFeatures(labels);
-                                }
-                            }
+                            sdk.Map.addFeatureToLayer({ layerName: layer.name, feature });
+                            // layer.addFeatures([feature]);
+                            // if (layerSettings.dynamicLabels) {
+                            //     const labels = getLabelPoints(feature);
+                            //     if (labels) {
+                            //         labels.forEach(labelFeature => {
+                            //             labelFeature.attributes.type = 'label';
+                            //         });
+                            //         layer.addFeatures(labels);
+                            //     }
+                            // }
                         }
                     }
                 });
@@ -583,8 +619,8 @@
             PROCESS_CONTEXTS.forEach(context => { context.cancel = true; });
         }
 
-        const extent = W.map.getExtent();
-        const zoom = W.map.getZoom();
+        const extent = sdk.Map.getMapExtent();
+        const zoom = sdk.Map.getZoomLevel();
         let url;
         const context = { callCount: 0, cancel: false };
         PROCESS_CONTEXTS.push(context);
@@ -759,53 +795,44 @@
     }
 
     function initLayers() {
-        _zipsLayer = new OpenLayers.Layer.Vector('US Gov\'t Boundaries - Zip Codes', {
-            uniqueName: '__WME_USGB_Zips',
-            styleMap: new OpenLayers.StyleMap({ default: ZIPS_STYLE })
-        });
-        _countiesLayer = new OpenLayers.Layer.Vector('US Gov\'t Boundaries - Counties', {
-            uniqueName: '__WME_USGB_Counties',
-            styleMap: new OpenLayers.StyleMap({ default: COUNTIES_STYLE })
-        });
-        _statesLayer = new OpenLayers.Layer.Vector('US Gov\'t Boundaries - States', {
-            uniqueName: '__WME_USGB_States',
-            styleMap: new OpenLayers.StyleMap({ default: STATES_STYLE })
-        });
-        _timeZonesLayer = new OpenLayers.Layer.Vector('US Gov\'t Boundaries - Time Zones', {
-            uniqueName: '__WME_USGB_Time_Zones',
-            styleMap: new OpenLayers.StyleMap({ default: TIME_ZONES_STYLE })
-        });
-        _uspsRoutesLayer = new OpenLayers.Layer.Vector('USPS Routes', {
-            uniqueName: '__wmeUSPSroutes',
-            styleMap: new OpenLayers.StyleMap({ default: USPS_ROUTES_STYLE })
-        });
+        sdk.Map.addLayer({ layerName: ZIPS_LAYER_NAME, styleRules: [{ style: ZIPS_STYLE }] });
+        sdk.Map.addLayer({ layerName: COUNTIES_LAYER_NAME, styleRules: [{ style: COUNTIES_STYLE }] });
+        sdk.Map.addLayer({ layerName: STATES_LAYER_NAME, styleRules: [{ style: STATES_STYLE }] });
+        sdk.Map.addLayer({ layerName: TIME_ZONES_LAYER_NAME, styleRules: [{ style: TIME_ZONES_STYLE }] });
+        sdk.Map.addLayer({ layerName: USPS_ROUTES_LAYER_NAME, styleRules: [{ style: USPS_ROUTES_STYLE }] });
 
+        [_zipsLayer] = W.map.getLayersByName(ZIPS_LAYER_NAME);
+        [_countiesLayer] = W.map.getLayersByName(COUNTIES_LAYER_NAME);
+        [_statesLayer] = W.map.getLayersByName(STATES_LAYER_NAME);
+        [_timeZonesLayer] = W.map.getLayersByName(TIME_ZONES_LAYER_NAME);
+        [_uspsRoutesLayer] = W.map.getLayersByName(USPS_ROUTES_LAYER_NAME);
+
+        // SDK: FR submitted
         _zipsLayer.setOpacity(0.6);
         _countiesLayer.setOpacity(0.6);
         _statesLayer.setOpacity(0.6);
         _timeZonesLayer.setOpacity(0.6);
+        _uspsRoutesLayer.setOpacity(0.8);
 
         _zipsLayer.setVisibility(_settings.layers.zips.visible);
         _countiesLayer.setVisibility(_settings.layers.counties.visible);
         _statesLayer.setVisibility(_settings.layers.states.visible);
         _timeZonesLayer.setVisibility(_settings.layers.timeZones.visible);
 
-        W.map.addLayers([_countiesLayer, _zipsLayer, _timeZonesLayer, _statesLayer, _uspsRoutesLayer]);
-
         // W.map.setLayerIndex(_uspsRoutesMapLayer, W.map.getLayerIndex(W.map.roadLayers[0])-1);
         // HACK to get around conflict with URO+.  If URO+ is fixed, this can be replaced with the setLayerIndex line above.
+        // SDK: FR submitted
         LAYER_Z_INDEX = W.map.roadLayer.getZIndex() - 1;
         _uspsRoutesLayer.setZIndex(LAYER_Z_INDEX);
         const checkLayerZIndex = () => { if (_uspsRoutesLayer.getZIndex() !== LAYER_Z_INDEX) _uspsRoutesLayer.setZIndex(LAYER_Z_INDEX); };
         setInterval(checkLayerZIndex, 100);
         // END HACK
 
-        _uspsRoutesLayer.setOpacity(0.8);
-
         _zipsLayer.events.register('visibilitychanged', null, onZipsLayerVisibilityChanged);
         _countiesLayer.events.register('visibilitychanged', null, onCountiesLayerVisibilityChanged);
         _statesLayer.events.register('visibilitychanged', null, onStatesLayerVisibilityChanged);
         _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged);
+        // SDK: FR submitted
         W.map.events.register('moveend', W.map, () => {
             try {
                 fetchBoundaries();
@@ -816,6 +843,7 @@
             }
         }, true);
 
+        // SDK: This will need to be addressed
         // Add the layer checkbox to the Layers menu.
         WazeWrap.Interface.AddLayerCheckbox('display', 'States', _settings.layers.states.visible, onStatesLayerToggleChanged);
         WazeWrap.Interface.AddLayerCheckbox('display', 'Counties', _settings.layers.counties.visible, onCountiesLayerToggleChanged);
@@ -878,8 +906,8 @@
 
     function onSelectionChanged() {
         const container = $('#usps-routes-container');
-        const selected = W.selectionManager.getSelectedDataModelObjects();
-        if (selected.length && selected[0].type === 'segment') {
+        const selection = sdk.Editing.getSelection();
+        if (selection?.objectType === 'segment') {
             container.show();
         } else {
             container.hide();
@@ -904,7 +932,7 @@
                 _$uspsResultsDiv
             )
         );
-        W.selectionManager.events.on('selectionchanged', onSelectionChanged);
+        document.addEventListener('wme-selection-changed', onSelectionChanged);
     }
 
     function loadScriptUpdateMonitor() {
@@ -947,4 +975,7 @@
     }
 
     bootstrap();
+
+    // SDK: remove this
+    unsafeWindow.turf = turf;
 }());
