@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2024.08.19.000
+// @version         2024.08.19.001
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
-// @require         https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js
+// @require         https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js
 // @require         https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
 // @grant           GM_xmlhttpRequest
 // @license         GNU GPLv3
@@ -358,12 +358,12 @@
         // The intersect function doesn't seem to like holes in polygons, so assume the
         // first ring is the outer boundary and ignore any holes.
         const featurePoly = turf.polygon([getRingArrayFromFeature(feature)[0]]);
-        const intersection = turf.intersect(screenPoly, featurePoly);
+        const intersection = turf.intersect(turf.featureCollection([screenPoly, featurePoly]));
         let pts;
 
         if (intersection && intersection.geometry && intersection.geometry.coordinates) {
             let turfPt = turf.centerOfMass(intersection);
-            if (!turf.inside(turfPt, intersection)) {
+            if (!turf.booleanWithin(turfPt, intersection)) {
                 turfPt = turf.pointOnSurface(intersection);
             }
             const turfCoords = turfPt.geometry.coordinates;
