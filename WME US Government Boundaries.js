@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2024.08.19.001
+// @version         2024.08.19.002
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -153,7 +153,7 @@
         console.log('USGB:', message);
     }
     function logError(message) {
-        console.error('USBG:', message);
+        console.error('USGB:', message);
     }
 
     // Recursively checks the settings object and fills in missing properties from the
@@ -364,7 +364,7 @@
         if (intersection && intersection.geometry && intersection.geometry.coordinates) {
             let turfPt = turf.centerOfMass(intersection);
             if (!turf.booleanWithin(turfPt, intersection)) {
-                turfPt = turf.pointOnSurface(intersection);
+                turfPt = turf.pointOnFeature(intersection);
             }
             const turfCoords = turfPt.geometry.coordinates;
             const pt = new OpenLayers.Geometry.Point(turfCoords[0], turfCoords[1]);
