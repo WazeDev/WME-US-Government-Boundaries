@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2024.08.19.002
+// @version         2024.10.12.000
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -761,7 +761,7 @@
             GM_info.script.version,
             UPDATE_MESSAGE,
             '',
-            'https://www.waze.com/forum/viewtopic.php?f=819&t=213344'
+            'https://www.waze.com/discuss/t/115019'
         );
     }
 
