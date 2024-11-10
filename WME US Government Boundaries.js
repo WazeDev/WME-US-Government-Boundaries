@@ -5,8 +5,9 @@
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
-// @require         https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js
+// @require         https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js
 // @require         https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
+// @require         https://update.greasyfork.org/scripts/509664/WME%20Utils%20-%20Bootstrap.js
 // @grant           GM_xmlhttpRequest
 // @license         GNU GPLv3
 // @contributionURL https://github.com/WazeDev/Thank-The-Authors
@@ -21,15 +22,13 @@
 /* global W */
 /* global turf */
 /* global WazeWrap */
-/* global getWmeSdk */
+/* global bootstrap */
 
-(function main() {
+(async function main() {
     'use strict';
 
     const UPDATE_MESSAGE = '';
-    const SCRIPT_NAME = GM_info.script.name;
-    const CURRENT_VERSION = GM_info.script.version;
-    const DOWNLOAD_URL = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
+    const downloadUrl = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
 
     const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
     // As of 8/8/2021, ZIP code tabulation areas are showing as 1/1/2020.
@@ -137,7 +136,7 @@
         strokeDashstyle: 'solid',
         strokeWidth: '${strokeWidth}'
     };
-    let sdk;
+    const sdk = await bootstrap({ scriptUpdateMonitor: { downloadUrl } });
     const ZIPS_LAYER_NAME = 'US Gov\'t Boundaries - Zip Codes';
     const COUNTIES_LAYER_NAME = 'US Gov\'t Boundaries - Counties';
     const STATES_LAYER_NAME = 'US Gov\'t Boundaries - States';
@@ -534,7 +533,7 @@
             }
         }
 
-        if (sdk.State.userInfo.userName === 'MapOMatic') {
+        if (sdk.State.getUserInfo().userName === 'MapOMatic') {
             logDebug(`${type} points: ${pointCount} -> ${reducedPointCount} (${((1.0 - reducedPointCount / pointCount) * 100).toFixed(1)}%)`);
         }
     }
@@ -935,19 +934,7 @@
         document.addEventListener('wme-selection-changed', onSelectionChanged);
     }
 
-    function loadScriptUpdateMonitor() {
-        try {
-            const updateMonitor = new WazeWrap.Alerts.ScriptUpdateMonitor(SCRIPT_NAME, CURRENT_VERSION, DOWNLOAD_URL, GM_xmlhttpRequest);
-            updateMonitor.start();
-        } catch (ex) {
-            // Report the error, but not a critical failure.
-            console.error(SCRIPT_NAME, ex);
-        }
-    }
-
     function init() {
-        sdk = getWmeSdk({ scriptId: 'wmeUSGovernmentBoundaries', scriptName: SCRIPT_NAME });
-        loadScriptUpdateMonitor();
         loadSettings();
         initLayers();
         initTab();
@@ -957,25 +944,5 @@
         log('Initialized.');
     }
 
-    function onWmeReady(tries = 0) {
-        if (tries === 40) return; // give up
-        if (WazeWrap.Ready) {
-            init();
-        } else {
-            setTimeout(onWmeReady, 500, ++tries);
-        }
-    }
-
-    function bootstrap() {
-        if (window.getWmeSdk) {
-            onWmeReady();
-        } else {
-            document.addEventListener('wme-ready', onWmeReady, { once: true });
-        }
-    }
-
-    bootstrap();
-
-    // SDK: remove this
-    unsafeWindow.turf = turf;
+    init();
 }());
