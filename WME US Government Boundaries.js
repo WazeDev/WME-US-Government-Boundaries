@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2024.10.12.000
+// @version         2025.01.08.000
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
+// @require         https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js
 // @require         https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js
 // @require         https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
 // @require         https://update.greasyfork.org/scripts/509664/WME%20Utils%20-%20Bootstrap.js
@@ -250,22 +251,6 @@
         }
     }
 
-<<<<<<< HEAD
-    function getOLMapExtent() {
-        let extent = W.map.getExtent();
-        if (Array.isArray(extent)) {
-            extent = new OpenLayers.Bounds(extent);
-            extent.transform('EPSG:4326', 'EPSG:3857');
-        }
-        return extent;
-    }
-
-    function arcgisFeatureToOLFeature(feature, attributes) {
-        const rings = [];
-        const e = getOLMapExtent();
-        const width = e.right - e.left;
-        const height = e.top - e.bottom;
-=======
     /**
  * Separates a polygon into the main outer ring (with holes) and additional external rings using spatial checks.
  * @param {Object} boundary - An ArcGIS polygon feature (GeoJSON format expected).
@@ -279,7 +264,6 @@
         const e = sdk.Map.getMapExtent();
         const width = e[2] - e[0];
         const height = e[3] - e[1];
->>>>>>> sdk-update
         const expandBy = 2;
         const clipBox = [
             e[0] - width * expandBy,
@@ -339,22 +323,6 @@
     }
 
     function getLabelPoints(feature) {
-<<<<<<< HEAD
-        const e = getOLMapExtent();
-        const screenPoly = turf.polygon([[
-            [e.left, e.top], [e.right, e.top], [e.right, e.bottom], [e.left, e.bottom], [e.left, e.top]
-        ]]);
-        // The intersect function doesn't seem to like holes in polygons, so assume the
-        // first ring is the outer boundary and ignore any holes.
-        const featurePoly = turf.polygon([getRingArrayFromFeature(feature)[0]]);
-        const intersection = turf.intersect(turf.featureCollection([screenPoly, featurePoly]));
-        let pts;
-
-        if (intersection && intersection.geometry && intersection.geometry.coordinates) {
-            let turfPt = turf.centerOfMass(intersection);
-            if (!turf.booleanWithin(turfPt, intersection)) {
-                turfPt = turf.pointOnFeature(intersection);
-=======
         const e = sdk.Map.getMapExtent();
         const screenPolygon = turf.polygon([[
             [e[0], e[3]], [e[2], e[3]], [e[2], e[1]], [e[0], e[1]], [e[0], e[3]]
@@ -371,7 +339,6 @@
                     break;
                 default:
                     throw new Error('Unexpected geometry type');
->>>>>>> sdk-update
             }
         }
 
@@ -610,13 +577,8 @@
             PROCESS_CONTEXTS.forEach(context => { context.cancel = true; });
         }
 
-<<<<<<< HEAD
-        const extent = getOLMapExtent();
-        const zoom = W.map.getZoom();
-=======
         const extent = sdk.Map.getMapExtent();
         const zoom = sdk.Map.getZoomLevel();
->>>>>>> sdk-update
         let url;
         const context = { callCount: 0, cancel: false };
         PROCESS_CONTEXTS.push(context);
@@ -1187,27 +1149,5 @@
         log('Initialized.');
     }
 
-<<<<<<< HEAD
-    function onWmeReady(tries = 0) {
-        if (WazeWrap.Ready) {
-            init();
-        } else if (tries === 40) {
-            log('WazeWrap not loaded. Giving up.');
-        } else {
-            setTimeout(onWmeReady, 250, ++tries);
-        }
-    }
-
-    function bootstrap() {
-        if (W.userscripts?.state.isReady && WazeWrap.Ready) {
-            onWmeReady();
-        } else {
-            document.addEventListener('wme-ready', onWmeReady, { once: true });
-        }
-    }
-
-    bootstrap();
-=======
     init();
->>>>>>> sdk-update
 }());
