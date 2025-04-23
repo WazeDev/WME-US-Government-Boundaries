@@ -281,8 +281,6 @@
                 mainOuterPolygon = turf.difference(turf.featureCollection([mainOuterPolygon, testPolygon]));
                 mainOuterPolygon.id = 0;
             } else {
-                // SDK: MultiPolygon not supported yet, so add these as separate polygons.
-                // Otherwise, it's an external ring
                 testPolygon.properties = attributes;
                 externalPolygons.push(testPolygon);
             }
@@ -297,7 +295,6 @@
                         clippedPolygons.push(clippedFeature);
                         break;
                     case 'MultiPolygon':
-                        // SDK: MultiPolygon not supported yet.
                         clippedFeature.geometry.coordinates.forEach(ring => clippedPolygons.push(turf.polygon(ring)));
                         break;
                     default:
@@ -533,9 +530,6 @@
             const color = USPS_ROUTE_COLORS[routeIdx];
             const feature = turf.toWgs84(turf.multiLineString(route.paths), { type: 'route', color, zIndex: routeCount - routeIdx - 1 });
 
-            // SDK: MultiLineString is not supported in the SDK yet, so convert to LineStrings.
-            // feature.id = 'route';
-            // features.push(feature);
             const lineStrings = feature.geometry.coordinates.map(coords => {
                 const ls = turf.lineString(coords, { type: 'route', color, zIndex: routeCount - routeIdx - 1 });
                 ls.id = 'route';
