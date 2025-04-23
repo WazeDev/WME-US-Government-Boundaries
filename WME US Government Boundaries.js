@@ -83,11 +83,6 @@
     let _$uspsResultsDiv;
     let _$getRoutesButton;
     let _settings = {};
-    // SDK: Remove these variables
-    let _zipsLayer;
-    let _countiesLayer;
-    let _statesLayer;
-    let _timeZonesLayer;
 
     function log(message) {
         console.log('USGB:', message);
@@ -363,7 +358,7 @@
     let pointCount;
     let reducedPointCount;
     function processBoundaries(boundaries, context, type, nameField) {
-        let layer;
+        let layerName;
         let layerSettings;
         let zoomLevel;
 
@@ -372,7 +367,7 @@
         switch (type) {
             case 'zip':
                 layerSettings = _settings.layers.zips;
-                layer = _zipsLayer;
+                layerName = ZIPS_LAYER_NAME;
                 // Append ZWJ character to label to prevent OpenLayers from dropping leading zeros in ZIP codes.
                 boundaries.forEach(boundary => {
                     const zipzone = `‍${boundary.attributes[nameField]}`;
@@ -381,12 +376,12 @@
                 break;
             case 'county':
                 layerSettings = _settings.layers.counties;
-                layer = _countiesLayer;
+                layerName = COUNTIES_LAYER_NAME;
                 break;
             case 'state':
                 zoomLevel = sdk.Map.getZoomLevel();
                 layerSettings = _settings.layers.states;
-                layer = _statesLayer;
+                layerName = STATES_LAYER_NAME;
                 if (zoomLevel < 5) {
                     layerSettings.dynamicLabels = false;
                     boundaries.forEach(boundary => {
@@ -404,11 +399,10 @@
                         boundary.attributes[nameField] = '';
                     });
                 }
-                layer = _statesLayer;
                 break;
             case 'timeZone':
                 layerSettings = _settings.layers.timeZones;
-                layer = _timeZonesLayer;
+                layerName = TIME_ZONES_LAYER_NAME;
                 boundaries.forEach(boundary => {
                     let zone = boundary.attributes[nameField];
                     if (zone >= 0) zone = `+${zone}`;
@@ -428,7 +422,7 @@
                 [ext[0], ext[3]], [ext[2], ext[3]], [ext[2], ext[1]], [ext[0], ext[1]], [ext[0], ext[3]]
             ]]);
             const screenArea = turf.area(screenPolygon);
-            layer.removeAllFeatures();
+            sdk.Map.removeAllFeaturesFromLayer({ layerName });
             if (!context.cancel) {
                 boundaries.forEach(boundary => {
                     const attributes = {
@@ -455,7 +449,7 @@
                                 }
                             });
                             try {
-                                sdk.Map.addFeaturesToLayer({ layerName: layer.name, features });
+                                sdk.Map.addFeaturesToLayer({ layerName, features });
                                 // console.log('OK: ', features);
                             } catch (ex) {
                                 console.log('FAIL: ', features);
@@ -470,7 +464,7 @@
                                     }
                                 });
                                 if (allLabels.length) {
-                                    sdk.Map.addFeaturesToLayer({ layerName: layer.name, features: allLabels });
+                                    sdk.Map.addFeaturesToLayer({ layerName, features: allLabels });
                                 }
                             }
                         }
@@ -693,51 +687,9 @@
         }
         const visibility = args.checked;
         settingsObj.visible = visibility;
+        saveSettings();
         sdk.Map.setLayerVisibility({ layerName, visibility });
-    }
-
-    function onZipsLayerVisibilityChanged() {
-        _settings.layers.zips.visible = _zipsLayer.visibility;
-        saveSettings();
         fetchBoundaries();
-    }
-
-    function onCountiesLayerVisibilityChanged() {
-        _settings.layers.counties.visible = _countiesLayer.visibility;
-        saveSettings();
-        fetchBoundaries();
-    }
-
-    function onStatesLayerVisibilityChanged() {
-        _settings.layers.states.visible = _statesLayer.visibility;
-        saveSettings();
-        fetchBoundaries();
-    }
-
-    function onTimeZonesLayerVisibilityChanged() {
-        _settings.layers.timeZones.visible = _timeZonesLayer.visibility;
-        saveSettings();
-        fetchBoundaries();
-    }
-
-    function onZipsLayerToggleChanged(checked) {
-        _zipsLayer.setVisibility(checked);
-        _settings.layers.zips.visible = checked;
-    }
-
-    function onCountiesLayerToggleChanged(checked) {
-        _countiesLayer.setVisibility(checked);
-        _settings.layers.counties.visible = checked;
-    }
-
-    function onStatesLayerToggleChanged(checked) {
-        _statesLayer.setVisibility(checked);
-        _settings.layers.states.visible = checked;
-    }
-
-    function onTimeZonesLayerToggleChanged(checked) {
-        _timeZonesLayer.setVisibility(checked);
-        _settings.layers.timeZones.visible = checked;
     }
 
     function onDynamicLabelsCheckboxChanged(settingName, checkboxId) {
@@ -1003,12 +955,6 @@
             ]
         });
 
-        // SDK: Remove these references
-        [_zipsLayer] = W.map.getLayersByName(ZIPS_LAYER_NAME);
-        [_countiesLayer] = W.map.getLayersByName(COUNTIES_LAYER_NAME);
-        [_statesLayer] = W.map.getLayersByName(STATES_LAYER_NAME);
-        [_timeZonesLayer] = W.map.getLayersByName(TIME_ZONES_LAYER_NAME);
-
         sdk.Map.setLayerOpacity({ layerName: ZIPS_LAYER_NAME, opacity: 0.6 });
         sdk.Map.setLayerOpacity({ layerName: COUNTIES_LAYER_NAME, opacity: 0.6 });
         sdk.Map.setLayerOpacity({ layerName: STATES_LAYER_NAME, opacity: 0.6 });
@@ -1032,24 +978,23 @@
         setInterval(() => { checkLayerZIndex(); }, 100);
         // END HACK
 
-        // SDK: Waiting on FR to set layer switcher toggle state: https://issuetracker.google.com/u/1/issues/375867296
-        // When that's done, remove WazeWrap lines and old visibilitychanged event handlers.
+        // SDK: (not a blocking issue) FR to set checkbox state when adding instead of having to setLayerChekboxChecked immediately: https://issuetracker.google.com/issues/412712079
         // Add the layer checkbox to the Layers menu.
-        // sdk.LayerSwitcher.addLayerCheckbox({ name: statesLayerCheckboxName });
-        // sdk.LayerSwitcher.addLayerCheckbox({ name: countiesLayerCheckboxName });
-        // sdk.LayerSwitcher.addLayerCheckbox({ name: zipsLayerCheckboxName });
-        // sdk.LayerSwitcher.addLayerCheckbox({ name: timeZonesLayerCheckboxName });
-        // sdk.Events.on({ eventName: 'wme-layer-checkbox-toggled', eventHandler: onLayerCheckboxToggled });
+        sdk.LayerSwitcher.addLayerCheckbox({ name: statesLayerCheckboxName });
+        sdk.LayerSwitcher.setLayerCheckboxChecked({ name: statesLayerCheckboxName, isChecked: _settings.layers.states.visible });
+        sdk.LayerSwitcher.addLayerCheckbox({ name: countiesLayerCheckboxName });
+        sdk.LayerSwitcher.setLayerCheckboxChecked({ name: countiesLayerCheckboxName, isChecked: _settings.layers.counties.visible });
+        sdk.LayerSwitcher.addLayerCheckbox({ name: zipsLayerCheckboxName });
+        sdk.LayerSwitcher.setLayerCheckboxChecked({ name: zipsLayerCheckboxName, isChecked: _settings.layers.zips.visible });
+        sdk.LayerSwitcher.addLayerCheckbox({ name: timeZonesLayerCheckboxName });
+        sdk.LayerSwitcher.setLayerCheckboxChecked({ name: timeZonesLayerCheckboxName, isChecked: _settings.layers.timeZones.visible });
 
-        _zipsLayer.events.register('visibilitychanged', null, onZipsLayerVisibilityChanged);
-        _countiesLayer.events.register('visibilitychanged', null, onCountiesLayerVisibilityChanged);
-        _statesLayer.events.register('visibilitychanged', null, onStatesLayerVisibilityChanged);
-        _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged);
+        sdk.Events.on({ eventName: 'wme-layer-checkbox-toggled', eventHandler: onLayerCheckboxToggled });
 
-        WazeWrap.Interface.AddLayerCheckbox('display', 'States', _settings.layers.states.visible, onStatesLayerToggleChanged);
-        WazeWrap.Interface.AddLayerCheckbox('display', 'Counties', _settings.layers.counties.visible, onCountiesLayerToggleChanged);
-        WazeWrap.Interface.AddLayerCheckbox('display', 'ZIP codes', _settings.layers.zips.visible, onZipsLayerToggleChanged);
-        WazeWrap.Interface.AddLayerCheckbox('display', 'Time zones', _settings.layers.timeZones.visible, onTimeZonesLayerToggleChanged);
+        // _zipsLayer.events.register('visibilitychanged', null, onZipsLayerVisibilityChanged);
+        // _countiesLayer.events.register('visibilitychanged', null, onCountiesLayerVisibilityChanged);
+        // _statesLayer.events.register('visibilitychanged', null, onStatesLayerVisibilityChanged);
+        // _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged);
 
         sdk.Events.on({ eventName: 'wme-map-move-end', eventHandler: onMapMoveEnd });
     }
