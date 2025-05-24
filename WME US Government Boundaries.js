@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2025.04.23.000
+// @version         2025.05.23.000
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -170,7 +170,6 @@
         const mapCenter = turf.point([center.lon, center.lat]);
         let text = '';
         let label;
-        let url;
 
         if (context.cancel) return;
         if (_settings.layers.zips.visible) {
@@ -182,42 +181,13 @@
                     // Substr removes leading ZWJ from the ZIP code label. ZWJ needed to fix map display of ZIP codes with leading zeros.
                     text = feature.properties.name.substr(1);
                     $('<span>', { id: 'zip-text' }).empty().css({ display: 'inline-block' }).append(
-                        $('<span>', { href: url, target: '__blank', title: 'Look up USPS zip code' })
+                        $('<a>', { href: 'https://tools.usps.com/zip-code-lookup.htm?citybyzipcode', target: '__blank', title: 'Look up USPS zip code' })
                             .text(text)
                             .css({
                                 color: 'white',
                                 display: 'inline-block',
                                 cursor: 'pointer',
                                 'text-decoration': 'underline'
-                            })
-                            // eslint-disable-next-line no-loop-func
-                            .click(() => {
-                                GM_xmlhttpRequest({
-                                    url: 'https://tools.usps.com/tools/app/ziplookup/cityByZip',
-                                    headers: { 'Content-type': 'application/x-www-form-urlencoded' },
-                                    method: 'POST',
-                                    data: `zip=${text}`,
-                                    onload: res => {
-                                        // "{"resultStatus":"SUCCESS","zip5":"42748","defaultCity":"HODGENVILLE","defaultState":"KY",
-                                        // "defaultRecordType": "STANDARD", "citiesList": [{ "city": "WHITE CITY", "state": "KY" }], "nonAcceptList": []}"
-                                        const json = JSON.parse(res.responseText);
-                                        let otherCities = json.citiesList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
-                                        if (otherCities.length) {
-                                            // eslint-disable-next-line max-len
-                                            otherCities = `<div style="margin-top: 10px;">Other cities recognized for addresses in this ZIP:</div>${otherCities}`;
-                                        }
-                                        let citiesToAvoid = json.nonAcceptList.map(entry => `<div style="color: #0c1f25;">${entry.city}, ${entry.state}</div>`).join('');
-                                        if (citiesToAvoid.length) {
-                                            citiesToAvoid = `<div style="margin-top: 10px;">City names to avoid:</div>${citiesToAvoid}`;
-                                        }
-                                        // eslint-disable-next-line prefer-template
-                                        const message = '<div style="margin-bottom: 10px;">From the <a href="https://tools.usps.com/go/ZipLookupAction_input" target="__blank">USPS "Look Up a ZIP Code" website</a></div>'
-                                            + '<div>Recommended city:</div>'
-                                            + `<div style="margin-bottom: 10px; color: #0c1f25;">${json.defaultCity}, ${json.defaultState}</div>`
-                                            + otherCities + citiesToAvoid;
-                                        WazeWrap.Alerts.info(null, message, true, false);
-                                    }
-                                });
                             })
                     ).appendTo($('#zip-boundary'));
                     if (!context.cancel) {
