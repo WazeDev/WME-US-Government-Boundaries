@@ -16,6 +16,7 @@
 // @connect         usps.com
 // @connect         arcgis.com
 // @connect         greasyfork.org
+// @grant           GM_setClipboard
 // ==/UserScript==
 
 /* global turf */
@@ -190,6 +191,7 @@
                                 'text-decoration': 'underline'
                             })
                     ).appendTo($('#zip-boundary'));
+                    $('#zip-text').on('click', () => GM_setClipboard($('#zip-text').text(), "text"););
                     if (!context.cancel) {
                         if (ZIP_CITIES[text]) {
                             appendCityToZip(text, ZIP_CITIES[text], context);
