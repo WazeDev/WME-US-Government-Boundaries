@@ -181,7 +181,7 @@
                     // Substr removes leading ZWJ from the ZIP code label. ZWJ needed to fix map display of ZIP codes with leading zeros.
                     text = feature.properties.name.substr(1);
                     $('<span>', { id: 'zip-text' }).empty().css({ display: 'inline-block' }).append(
-                        $('<a>', { href: 'https://tools.usps.com/zip-code-lookup.htm?citybyzipcode', target: '__blank', title: 'Look up USPS zip code' })
+                        $('<a>', { href: `https://tools.usps.com/zip-code-lookup.htm?citybyzipcode&mode=byZip&zip=${text}`, target: '__blank', title: 'Look up USPS zip code' })
                             .text(text)
                             .css({
                                 color: 'white',
