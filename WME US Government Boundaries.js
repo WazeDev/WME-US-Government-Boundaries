@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2025.05.23.000
+// @version         2025.10.13.000
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -25,7 +25,7 @@
 (async function main() {
     'use strict';
 
-    const UPDATE_MESSAGE = '';
+    const UPDATE_MESSAGE = 'When you click on the Zip code, you no longer have to type it in the USPS window.';
     const downloadUrl = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
 
     const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
