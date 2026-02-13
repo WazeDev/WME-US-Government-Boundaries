@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2025.10.13.000
+// @version         2026.02.13.000
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -23,1039 +23,1078 @@
 /* global bootstrap */
 
 (async function main() {
-    'use strict';
+  'use strict';
 
-    const UPDATE_MESSAGE = 'When you click on the Zip code, you no longer have to type it in the USPS window.';
-    const downloadUrl = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
+  const UPDATE_MESSAGE = 'When you click on the Zip code, you no longer have to type it in the USPS window.';
+  const downloadUrl = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
 
-    const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
-    // As of 8/8/2021, ZIP code tabulation areas are showing as 1/1/2020.
-    const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/PUMA_TAD_TAZ_UGA_ZCTA/MapServer/2/';
-    const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/State_County/MapServer/1/';
-    const STATES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/State_County/MapServer/0/';
-    const TIME_ZONES_LAYER_URL = 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Time_Zones/FeatureServer/0/';
-    const USPS_ROUTE_COLORS = ['#f00', '#0a0', '#00f', '#a0a', '#6c82cb', '#0aa'];
-    const USPS_ROUTES_URL_TEMPLATE = 'https://gis.usps.com/arcgis/rest/services/EDDM/selectNear/GPServer/routes/execute?f=json&env%3AoutSR=102100&'
-        + 'Selecting_Features=%7B%22geometryType%22%3A%22esriGeometryPoint%22%2C%22features%22%3A%5B%7B%22'
-        + 'geometry%22%3A%7B%22x%22%3A{lon}%2C%22y%22%3A{lat}%2C%22spatialReference%22%3A%7B%22wkid%22%3A'
-        + '102100%2C%22latestWkid%22%3A3857%7D%7D%7D%5D%2C%22sr%22%3A%7B%22wkid%22%3A102100%2C%22latestWkid'
-        + '%22%3A3857%7D%7D&Distance={radius}&Rte_Box=R&userName=EDDM';
-    const USPS_ROUTES_RADIUS = 0.5; // miles
+  const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
+  const ZIPS_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/2/';
+  const COUNTIES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/82/';
+  const STATES_LAYER_URL = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/80/';
+  const TIME_ZONES_LAYER_URL = 'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/World_Time_Zones/FeatureServer/0/';
+  const USPS_ROUTE_COLORS = ['#f00', '#0a0', '#00f', '#a0a', '#6c82cb', '#0aa'];
+  const USPS_ROUTES_URL_TEMPLATE =
+    'https://gis.usps.com/arcgis/rest/services/EDDM/selectNear/GPServer/routes/execute?f=json&env%3AoutSR=4326&' +
+    'Selecting_Features=%7B%22geometryType%22%3A%22esriGeometryPoint%22%2C%22features%22%3A%5B%7B%22' +
+    'geometry%22%3A%7B%22x%22%3A{lon}%2C%22y%22%3A{lat}%2C%22spatialReference%22%3A%7B%22wkid%22%3A' +
+    '4326%7D%7D%7D%5D%2C%22sr%22%3A%7B%22wkid%22%3A4326%7D%7D&Distance={radius}&Rte_Box=R&userName=EDDM';
 
-    // Min zoom caps to prevent displaying too many zip and county boundaries (overload user's browser)
-    const MIN_COUNTIES_ZOOM = 9;
-    const MIN_ZIPS_ZOOM = 12;
-    const ZOOM_GRANULARITY = {
-        22: 5,
-        21: 5,
-        20: 5,
-        19: 5,
-        18: 5,
-        17: 5,
-        16: 5,
-        15: 10,
-        14: 15,
-        13: 30,
-        12: 80,
-        11: 120,
-        10: 300,
-        9: 1000,
-        8: 2000,
-        7: 3000,
-        6: 5000,
-        5: 12000,
-        4: 20000
+  function getMaxAllowableOffsetForZoom(zoomLevel) {
+    const zoomToOffsetMap = {
+      4: 0.057, 5: 0.057, 6: 0.057, 7: 0.0285, 8: 0.0142, 9: 0.0072,
+      10: 0.0036, 11: 0.0018, 12: 0.0009, 13: 0.00045, 14: 0.000225,
+      15: 0.0001125, 16: 0.000056, 17: 0.000028, 18: 0.000014,
+      19: 0.000007, 20: 0.000007, 21: 0.000007, 22: 0.000007,
     };
+    const key = Math.round(zoomLevel);
+    return zoomToOffsetMap[key] !== undefined ? zoomToOffsetMap[key] : zoomToOffsetMap[22];
+  }
 
-    const PROCESS_CONTEXTS = [];
-    const ZIP_CITIES = {};
-    const sdk = await bootstrap({ scriptUpdateMonitor: { downloadUrl } });
-    const ZIPS_LAYER_NAME = 'US Gov\'t Boundaries - Zip Codes';
-    const COUNTIES_LAYER_NAME = 'US Gov\'t Boundaries - Counties';
-    const STATES_LAYER_NAME = 'US Gov\'t Boundaries - States';
-    const TIME_ZONES_LAYER_NAME = 'US Gov\'t Boundaries - Time Zones';
-    const USPS_ROUTES_LAYER_NAME = 'USPS Routes';
+  const PROCESS_CONTEXTS = [];
+  const ZIP_CITIES = {};
+  const sdk = await bootstrap({ scriptUpdateMonitor: { downloadUrl } });
+  const ZIPS_LAYER_NAME = "US Gov't Boundaries - Zip Codes";
+  const COUNTIES_LAYER_NAME = "US Gov't Boundaries - Counties";
+  const STATES_LAYER_NAME = "US Gov't Boundaries - States";
+  const TIME_ZONES_LAYER_NAME = "US Gov't Boundaries - Time Zones";
+  const USPS_ROUTES_LAYER_NAME = 'USPS Routes';
 
-    const zipsLayerCheckboxName = 'USGB - Zip codes';
-    const countiesLayerCheckboxName = 'USGB - Counties';
-    const statesLayerCheckboxName = 'USGB - States';
-    const timeZonesLayerCheckboxName = 'USGB - Time zones';
-    let _$uspsResultsDiv;
-    let _$getRoutesButton;
-    let _settings = {};
+  const zipsLayerCheckboxName = 'USGB - Zip codes';
+  const countiesLayerCheckboxName = 'USGB - Counties';
+  const statesLayerCheckboxName = 'USGB - States';
+  const timeZonesLayerCheckboxName = 'USGB - Time zones';
+  let _$uspsResultsDiv;
+  let _$getRoutesButton;
+  let _settings = {};
 
-    function log(message) {
-        console.log('USGB:', message);
+  function log(message) { console.log('USGB:', message); }
+  function logDebug(message) { console.log('USGB:', message); }
+  function logError(message) { console.error('USGB:', message); }
+
+  function getDefaultSettings() {
+    return {
+      lastVersion: GM_info.script.version,
+      layers: {
+        zips: {
+          visible: true,
+          dynamicLabels: true,
+          color: '#ff0000',
+          labelOutlineColor: '#ffffff',
+          opacity: 0.6,
+          minZoom: 12,
+        },
+        counties: {
+          visible: true,
+          dynamicLabels: true,
+          color: '#ffc0cb',
+          labelOutlineColor: '#000000',
+          opacity: 0.6,
+          minZoom: 8,
+        },
+        states: {
+          visible: true,
+          dynamicLabels: true,
+          color: '#0000ff',
+          labelOutlineColor: '#add8e6',
+          opacity: 0.6,
+        },
+        timeZones: {
+          visible: true,
+          dynamicLabels: true,
+          color: '#ff8855',
+          labelOutlineColor: '#883311',
+          opacity: 0.6,
+        },
+      },
+      uspsRoutes: {
+        radius: 0.5,
+        opacity: 0.8,
+      },
+    };
+  }
+
+  function checkSettings(obj, defaultObj) {
+    Object.keys(defaultObj).forEach((key) => {
+      if (!obj.hasOwnProperty(key)) {
+        obj[key] = defaultObj[key];
+      } else if (defaultObj[key] && defaultObj[key].constructor === {}.constructor) {
+        checkSettings(obj[key], defaultObj[key]);
+      }
+    });
+  }
+
+  function loadSettings() {
+    const loadedSettings = $.parseJSON(localStorage.getItem(SETTINGS_STORE_NAME));
+    const defaultSettings = getDefaultSettings();
+    if (loadedSettings) {
+      _settings = loadedSettings;
+      checkSettings(_settings, defaultSettings);
+    } else {
+      _settings = defaultSettings;
     }
-    function logDebug(message) {
-        console.log('USGB:', message);
-    }
-    function logError(message) {
-        console.error('USGB:', message);
-    }
+  }
 
-    // Recursively checks the settings object and fills in missing properties from the
-    // default settings object.
-    function checkSettings(obj, defaultObj) {
-        Object.keys(defaultObj).forEach(key => {
-            if (!obj.hasOwnProperty(key)) {
-                obj[key] = defaultObj[key];
-            } else if (defaultObj[key] && (defaultObj[key].constructor === {}.constructor)) {
-                checkSettings(obj[key], defaultObj[key]);
+  function saveSettings() {
+    if (localStorage) {
+      localStorage.setItem(SETTINGS_STORE_NAME, JSON.stringify(_settings));
+      log('Settings saved');
+    }
+  }
+
+  function getUrl(baseUrl, extent, zoom, outFields, fParam = 'json') {
+    const geometry = {
+      xmin: extent[0], ymin: extent[1], xmax: extent[2], ymax: extent[3],
+      spatialReference: { wkid: 4326 },
+    };
+    const geometryStr = encodeURIComponent(JSON.stringify(geometry));
+    const maxAllowableOffsetDeg = getMaxAllowableOffsetForZoom(zoom);
+
+    let url = `${baseUrl}query?geometry=${geometryStr}`;
+    url += '&returnGeometry=true';
+    url += `&outFields=${encodeURIComponent(outFields.join(','))}`;
+    url += `&maxAllowableOffset=${maxAllowableOffsetDeg}`;
+    url += '&spatialRel=esriSpatialRelIntersects';
+    url += '&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326';
+    url += `&f=${fParam}`;
+    return url;
+  }
+
+  function appendCityToZip(zip, cityState, context) {
+    if (!context.cancel) {
+      if (!cityState.error) {
+        ZIP_CITIES[zip] = cityState;
+        $('#zip-text').append(` (${cityState.city}, ${cityState.state})`);
+      }
+    }
+  }
+
+  let lastZipFeatures;
+  let lastCountyFeatures;
+
+  function updateNameDisplay(context) {
+    const center = sdk.Map.getMapCenter();
+    const mapCenter = turf.point([center.lon, center.lat]);
+    let text = '';
+    let label;
+
+    if (context.cancel) return;
+    if (_settings.layers.zips.visible) {
+      const onload = (res) => appendCityToZip(text, $.parseJSON(res.responseText), res.context);
+      for (let i = 0; i < lastZipFeatures.length; i++) {
+        const feature = lastZipFeatures[i];
+
+        if (turf.booleanPointInPolygon(mapCenter, feature)) {
+          text = feature.properties.name.substr(1);
+          $('<span>', { id: 'zip-text' })
+            .empty()
+            .css({ display: 'inline-block' })
+            .append(
+              $('<a>', { href: `https://tools.usps.com/zip-code-lookup.htm?citybyzipcode&mode=byZip&zip=${text}`, target: '__blank', title: 'Look up USPS zip code' })
+                .text(text)
+                .css({ color: 'white', display: 'inline-block', cursor: 'pointer', 'text-decoration': 'underline' }),
+            )
+            .appendTo($('#zip-boundary'));
+          if (!context.cancel) {
+            if (ZIP_CITIES[text]) {
+              appendCityToZip(text, ZIP_CITIES[text], context);
+            } else {
+              GM_xmlhttpRequest({
+                url: `https://wazex.us/zips/ziptocity2.php?zip=${text}`,
+                context, method: 'GET', onload,
+              });
             }
-        });
-    }
-
-    function loadSettings() {
-        const loadedSettings = $.parseJSON(localStorage.getItem(SETTINGS_STORE_NAME));
-        const defaultSettings = {
-            lastVersion: null,
-            layers: {
-                zips: { visible: true, dynamicLabels: false },
-                states: { visible: true, dynamicLabels: false },
-                counties: { visible: true, dynamicLabels: true },
-                timeZones: { visible: true, dynamicLabels: true }
-            }
-        };
-        if (loadedSettings) {
-            _settings = loadedSettings;
-            checkSettings(_settings, defaultSettings);
-        } else {
-            _settings = defaultSettings;
+          }
         }
+      }
     }
-
-    function saveSettings() {
-        if (localStorage) {
-            localStorage.setItem(SETTINGS_STORE_NAME, JSON.stringify(_settings));
-            log('Settings saved');
+    if (_settings.layers.counties.visible) {
+      for (let i = 0; i < lastCountyFeatures.length; i++) {
+        const feature = lastCountyFeatures[i];
+        if (turf.booleanPointInPolygon(mapCenter, feature)) {
+          label = feature.properties.name;
+          $('<span>', { id: 'county-text' }).css({ display: 'inline-block' }).text(label).appendTo($('#county-boundary'));
         }
+      }
     }
+  }
 
-    function getUrl(baseUrl, extent, zoom, outFields) {
-        const extentLeftBottom = turf.toMercator([extent[0], extent[1]]);
-        const extentRightTop = turf.toMercator([extent[2], extent[3]]);
-        const geometry = {
-            xmin: extentLeftBottom[0],
-            ymin: extentLeftBottom[1],
-            xmax: extentRightTop[0],
-            ymax: extentRightTop[1],
-            spatialReference: { wkid: 102100, latestWkid: 3857 }
-        };
-        const geometryStr = JSON.stringify(geometry);
-        let url = `${baseUrl}query?geometry=${encodeURIComponent(geometryStr)}`;
-        url += '&returnGeometry=true';
-        url += `&outFields=${encodeURIComponent(outFields.join(','))}`;
-        url += `&maxAllowableOffset=${ZOOM_GRANULARITY[sdk.Map.getZoomLevel()]}`;
-        // url += '&quantizationParameters={tolerance:100}'; // Don't do this.  It returns relative coordinates.
-        url += '&spatialRel=esriSpatialRelIntersects&geometryType=esriGeometryEnvelope&inSR=102100&outSR=3857&f=json';
-        return url;
-    }
+  function extractPolygonsWithExternalRings(boundary, attributes) {
+    const coordinates = boundary.geometry.rings;
+    const externalPolygons = [];
 
-    function appendCityToZip(zip, cityState, context) {
-        if (!context.cancel) {
-            if (!cityState.error) {
-                ZIP_CITIES[zip] = cityState;
-                $('#zip-text').append(` (${cityState.city}, ${cityState.state})`);
-            }
-        }
-    }
+    const e = sdk.Map.getMapExtent();
+    const width = e[2] - e[0];
+    const height = e[3] - e[1];
+    const expandBy = 2;
+    const clipBox = [e[0] - width * expandBy, e[1] - height * expandBy, e[2] + width * expandBy, e[3] + height * expandBy];
+    const clipPolygon = turf.bboxPolygon(clipBox);
 
-    // The SDK doesn't have a way to retrieve features from a layer (yet), so store them here
-    // so they can be referenced later.
-    let lastZipFeatures;
-    let lastCountyFeatures;
-    function updateNameDisplay(context) {
-        const center = sdk.Map.getMapCenter();
-        const mapCenter = turf.point([center.lon, center.lat]);
-        let text = '';
-        let label;
+    let mainOuterPolygon = turf.polygon([coordinates[0]], attributes);
+    mainOuterPolygon.id = 0;
 
-        if (context.cancel) return;
-        if (_settings.layers.zips.visible) {
-            const onload = res => appendCityToZip(text, $.parseJSON(res.responseText), res.context);
-            for (let i = 0; i < lastZipFeatures.length; i++) {
-                const feature = lastZipFeatures[i];
-
-                if (turf.booleanPointInPolygon(mapCenter, feature)) {
-                    // Substr removes leading ZWJ from the ZIP code label. ZWJ needed to fix map display of ZIP codes with leading zeros.
-                    text = feature.properties.name.substr(1);
-                    $('<span>', { id: 'zip-text' }).empty().css({ display: 'inline-block' }).append(
-                        $('<a>', { href: `https://tools.usps.com/zip-code-lookup.htm?citybyzipcode&mode=byZip&zip=${text}`, target: '__blank', title: 'Look up USPS zip code' })
-                            .text(text)
-                            .css({
-                                color: 'white',
-                                display: 'inline-block',
-                                cursor: 'pointer',
-                                'text-decoration': 'underline'
-                            })
-                    ).appendTo($('#zip-boundary'));
-                    if (!context.cancel) {
-                        if (ZIP_CITIES[text]) {
-                            appendCityToZip(text, ZIP_CITIES[text], context);
-                        } else {
-                            GM_xmlhttpRequest({
-                                url: `https://wazex.us/zips/ziptocity2.php?zip=${text}`, context, method: 'GET', onload
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        if (_settings.layers.counties.visible) {
-            for (let i = 0; i < lastCountyFeatures.length; i++) {
-                const feature = lastCountyFeatures[i];
-                if (turf.booleanPointInPolygon(mapCenter, feature)) {
-                    label = feature.properties.name;
-                    $('<span>', { id: 'county-text' }).css({ display: 'inline-block' })
-                        .text(label)
-                        .appendTo($('#county-boundary'));
-                }
-            }
-        }
-    }
-
-    /**
- * Separates a polygon into the main outer ring (with holes) and additional external rings using spatial checks.
- * @param {Object} boundary - An ArcGIS polygon feature (GeoJSON format expected).
- * @param {Object} attributes - An object containing attributes.
- * @returns {Array} - Array of GeoJSON Polygon features (outer polygon with holes, and external polygons).
- */
-    function extractPolygonsWithExternalRings(boundary, attributes) {
-        const coordinates = boundary.geometry.rings;
-        const externalPolygons = [];
-
-        const e = sdk.Map.getMapExtent();
-        const width = e[2] - e[0];
-        const height = e[3] - e[1];
-        const expandBy = 2;
-        const clipBox = [
-            e[0] - width * expandBy,
-            e[1] - height * expandBy,
-            e[2] + width * expandBy,
-            e[3] + height * expandBy
-        ];
-        const clipPolygon = turf.bboxPolygon(clipBox);
-
-        let mainOuterPolygon = null;
-        // First ring is assumed to be the main outer ring
-        mainOuterPolygon = turf.toWgs84(turf.polygon([coordinates[0]], attributes));
+    for (let i = 1; i < coordinates.length; i++) {
+      const testPolygon = turf.polygon([coordinates[i]]);
+      if (turf.booleanContains(mainOuterPolygon, testPolygon)) {
+        mainOuterPolygon = turf.difference(turf.featureCollection([mainOuterPolygon, testPolygon]));
         mainOuterPolygon.id = 0;
+      } else {
+        testPolygon.properties = attributes;
+        externalPolygons.push(testPolygon);
+      }
+    }
 
-        // Process additional rings
-        for (let i = 1; i < coordinates.length; i++) {
-            const testPolygon = turf.toWgs84(turf.polygon([coordinates[i]]));
-
-            if (turf.booleanContains(mainOuterPolygon, testPolygon)) {
-                // If the main polygon contains the ring, it's a hole
-                mainOuterPolygon = turf.difference(turf.featureCollection([mainOuterPolygon, testPolygon]));
-                mainOuterPolygon.id = 0;
-            } else {
-                testPolygon.properties = attributes;
-                externalPolygons.push(testPolygon);
-            }
+    const clippedPolygons = [];
+    [mainOuterPolygon, ...externalPolygons].forEach((polygon) => {
+      const clippedFeature = turf.intersect(turf.featureCollection([polygon, clipPolygon]));
+      if (clippedFeature) {
+        switch (clippedFeature.geometry.type) {
+          case 'Polygon':
+            clippedPolygons.push(clippedFeature);
+            break;
+          case 'MultiPolygon':
+            clippedFeature.geometry.coordinates.forEach((ring) => clippedPolygons.push(turf.polygon(ring)));
+            break;
+          default:
+            throw new Error('Unexpected feature type');
         }
+      }
+    });
+    clippedPolygons
+      .filter((polygon) => polygon.geometry.coordinates.length)
+      .forEach((polygon) => {
+        polygon.id = 0;
+        polygon.properties = attributes;
+      });
 
-        const clippedPolygons = [];
-        [mainOuterPolygon, ...externalPolygons].forEach(polygon => {
-            const clippedFeature = turf.intersect(turf.featureCollection([polygon, clipPolygon]));
-            if (clippedFeature) {
-                switch (clippedFeature.geometry.type) {
-                    case 'Polygon':
-                        clippedPolygons.push(clippedFeature);
-                        break;
-                    case 'MultiPolygon':
-                        clippedFeature.geometry.coordinates.forEach(ring => clippedPolygons.push(turf.polygon(ring)));
-                        break;
-                    default:
-                        throw new Error('Unexpected feature type');
-                }
-            }
+    return clippedPolygons;
+  }
+
+  function getLabelPoints(feature) {
+    const e = sdk.Map.getMapExtent();
+    const screenPolygon = turf.polygon([
+      [[e[0], e[3]], [e[2], e[3]], [e[2], e[1]], [e[0], e[1]], [e[0], e[3]]],
+    ]);
+    const intersection = turf.intersect(turf.featureCollection([screenPolygon, feature]));
+    const polygons = [];
+    if (intersection) {
+      switch (intersection.geometry.type) {
+        case 'Polygon':
+          polygons.push(intersection);
+          break;
+        case 'MultiPolygon':
+          intersection.geometry.coordinates.forEach((ring) => polygons.push(turf.polygon(ring)));
+          break;
+        default:
+          throw new Error('Unexpected geometry type');
+      }
+    }
+
+    const screenArea = turf.area(screenPolygon);
+    const points = polygons
+      .filter((polygon) => {
+        const polygonArea = turf.area(polygon);
+        return polygonArea / screenArea > 0.005;
+      })
+      .map((polygon) => {
+        let point = turf.centerOfMass(polygon);
+        if (!turf.booleanPointInPolygon(point, polygon)) {
+          point = turf.pointOnFeature(polygon);
+        }
+        point.properties = { type: 'label', label: feature.properties.name };
+        point.id = 0;
+        return point;
+      });
+    return points;
+  }
+
+  let pointCount;
+  let reducedPointCount;
+
+  function processBoundaries(boundaries, context, type, nameField) {
+    let layerName;
+    let layerSettings;
+
+    pointCount = 0;
+    reducedPointCount = 0;
+    switch (type) {
+      case 'zip':
+        layerSettings = _settings.layers.zips;
+        layerName = ZIPS_LAYER_NAME;
+        boundaries.forEach((boundary) => {
+          boundary.attributes[nameField] = `\u200D${boundary.attributes[nameField]}`;
         });
-        clippedPolygons
-            .filter(polygon => polygon.geometry.coordinates.length)
-            .forEach(polygon => {
-                polygon.id = 0;
-                polygon.properties = attributes;
-            });
-
-        // Return an array with the main outer polygon and additional external polygons
-        return clippedPolygons;
+        break;
+      case 'county':
+        layerSettings = _settings.layers.counties;
+        layerName = COUNTIES_LAYER_NAME;
+        break;
+      case 'state':
+        layerSettings = _settings.layers.states;
+        layerName = STATES_LAYER_NAME;
+        layerSettings.dynamicLabels = true;
+        break;
+      case 'timeZone':
+        layerSettings = _settings.layers.timeZones;
+        layerName = TIME_ZONES_LAYER_NAME;
+        boundaries.forEach((boundary) => {
+          let zone = boundary.attributes[nameField];
+          if (zone >= 0) zone = `+${zone}`;
+          boundary.attributes[nameField] = `UTC${zone}`;
+        });
+        break;
+      default:
+        throw new Error('USGB: Unexpected type argument in processBoundaries');
     }
 
-    function getLabelPoints(feature) {
-        const e = sdk.Map.getMapExtent();
-        const screenPolygon = turf.polygon([[
-            [e[0], e[3]], [e[2], e[3]], [e[2], e[1]], [e[0], e[1]], [e[0], e[3]]
-        ]]);
-        const intersection = turf.intersect(turf.featureCollection([screenPolygon, feature]));
-        const polygons = [];
-        if (intersection) {
-            switch (intersection.geometry.type) {
-                case 'Polygon':
-                    polygons.push(intersection);
-                    break;
-                case 'MultiPolygon':
-                    intersection.geometry.coordinates.forEach(ring => polygons.push(turf.polygon(ring)));
-                    break;
-                default:
-                    throw new Error('Unexpected geometry type');
-            }
-        }
+    const allFeatures = [];
+    if (context.cancel || !layerSettings.visible) {
+      // do nothing
+    } else {
+      const ext = sdk.Map.getMapExtent();
+      const screenPolygon = turf.polygon([
+        [[ext[0], ext[3]], [ext[2], ext[3]], [ext[2], ext[1]], [ext[0], ext[1]], [ext[0], ext[3]]],
+      ]);
+      const screenArea = turf.area(screenPolygon);
+      sdk.Map.removeAllFeaturesFromLayer({ layerName });
+      if (!context.cancel) {
+        boundaries.forEach((boundary) => {
+          const attributes = {
+            name: boundary.attributes[nameField],
+            label: boundary.attributes[nameField],
+            type,
+          };
 
-        const screenArea = turf.area(screenPolygon);
-        const points = polygons
-            .filter(polygon => {
-                // Only include labels on polygons that are large enough
-                const polygonArea = turf.area(polygon);
-                return polygonArea / screenArea > 0.005;
-            })
-            .map(polygon => {
-                let point = turf.centerOfMass(polygon);
-                if (!turf.booleanPointInPolygon(point, polygon)) {
-                    point = turf.pointOnFeature(polygon);
-                }
-                point.properties = { type: 'label', label: feature.properties.name };
-                point.id = 0;
-                return point;
-            });
-        return points;
-    }
-
-    let pointCount;
-    let reducedPointCount;
-    function processBoundaries(boundaries, context, type, nameField) {
-        let layerName;
-        let layerSettings;
-        let zoomLevel;
-
-        pointCount = 0;
-        reducedPointCount = 0;
-        switch (type) {
-            case 'zip':
-                layerSettings = _settings.layers.zips;
-                layerName = ZIPS_LAYER_NAME;
-                // Append ZWJ character to label to prevent OpenLayers from dropping leading zeros in ZIP codes.
-                boundaries.forEach(boundary => {
-                    const zipzone = `‍${boundary.attributes[nameField]}`;
-                    boundary.attributes[nameField] = `${zipzone}`;
-                });
-                break;
-            case 'county':
-                layerSettings = _settings.layers.counties;
-                layerName = COUNTIES_LAYER_NAME;
-                break;
-            case 'state':
-                zoomLevel = sdk.Map.getZoomLevel();
-                layerSettings = _settings.layers.states;
-                layerName = STATES_LAYER_NAME;
-                if (zoomLevel < 5) {
-                    layerSettings.dynamicLabels = false;
-                    boundaries.forEach(boundary => {
-                        boundary.attributes[nameField] = '';
-                    });
-                } else if (zoomLevel <= 6) {
-                    layerSettings.dynamicLabels = false;
-                } else if (zoomLevel <= 11) {
-                    layerSettings.dynamicLabels = true;
-                } else if (zoomLevel <= 15) {
-                    layerSettings.dynamicLabels = true;
+          if (!context.cancel) {
+            const features = extractPolygonsWithExternalRings(boundary, attributes);
+            if (features.length) {
+              if (type === 'zip' || type === 'county') {
+                allFeatures.push(...features);
+              }
+              features.forEach((polygon) => {
+                if (layerSettings.dynamicLabels) {
+                  polygon.properties.label = '';
                 } else {
-                    layerSettings.dynamicLabels = true;
-                    boundaries.forEach(boundary => {
-                        boundary.attributes[nameField] = '';
-                    });
+                  const polygonArea = turf.area(polygon);
+                  if (polygonArea / screenArea <= 0.005) {
+                    polygon.properties.label = '';
+                  }
                 }
-                break;
-            case 'timeZone':
-                layerSettings = _settings.layers.timeZones;
-                layerName = TIME_ZONES_LAYER_NAME;
-                boundaries.forEach(boundary => {
-                    let zone = boundary.attributes[nameField];
-                    if (zone >= 0) zone = `+${zone}`;
-                    boundary.attributes[nameField] = `UTC${zone}`;
+              });
+              try {
+                sdk.Map.addFeaturesToLayer({ layerName, features });
+              } catch (ex) {
+                logError('FAIL: ', features);
+              }
+              if (layerSettings.dynamicLabels) {
+                const allLabels = [];
+                features.forEach((feature) => {
+                  const labels = getLabelPoints(feature);
+                  if (labels?.length) {
+                    allLabels.push(...labels);
+                  }
                 });
-                break;
-            default:
-                throw new Error('USGB: Unexpected type argument in processBoundaries');
-        }
-
-        const allFeatures = [];
-        if (context.cancel || !layerSettings.visible) {
-            // do nothing
-        } else {
-            const ext = sdk.Map.getMapExtent();
-            const screenPolygon = turf.polygon([[
-                [ext[0], ext[3]], [ext[2], ext[3]], [ext[2], ext[1]], [ext[0], ext[1]], [ext[0], ext[3]]
-            ]]);
-            const screenArea = turf.area(screenPolygon);
-            sdk.Map.removeAllFeaturesFromLayer({ layerName });
-            if (!context.cancel) {
-                boundaries.forEach(boundary => {
-                    const attributes = {
-                        name: boundary.attributes[nameField],
-                        label: boundary.attributes[nameField],
-                        type
-                    };
-
-                    if (!context.cancel) {
-                        const features = extractPolygonsWithExternalRings(boundary, attributes);
-                        if (features.length) {
-                            if (type === 'zip' || type === 'county') {
-                                allFeatures.push(...features);
-                            }
-                            features.forEach(polygon => {
-                                if (layerSettings.dynamicLabels) {
-                                    polygon.properties.label = '';
-                                } else {
-                                    // Only include labels on polygons that are large enough
-                                    const polygonArea = turf.area(polygon);
-                                    if (polygonArea / screenArea <= 0.005) {
-                                        polygon.properties.label = '';
-                                    }
-                                }
-                            });
-                            try {
-                                sdk.Map.addFeaturesToLayer({ layerName, features });
-                                // console.log('OK: ', features);
-                            } catch (ex) {
-                                console.log('FAIL: ', features);
-                                // console.log(JSON.stringify(features[0]));
-                            }
-                            if (layerSettings.dynamicLabels) {
-                                const allLabels = [];
-                                features.forEach(feature => {
-                                    const labels = getLabelPoints(feature);
-                                    if (labels?.length) {
-                                        allLabels.push(...labels);
-                                    }
-                                });
-                                if (allLabels.length) {
-                                    sdk.Map.addFeaturesToLayer({ layerName, features: allLabels });
-                                }
-                            }
-                        }
-                    }
-                });
+                if (allLabels.length) {
+                  sdk.Map.addFeaturesToLayer({ layerName, features: allLabels });
+                }
+              }
             }
-        }
-
-        if (type === 'zip') {
-            lastZipFeatures = allFeatures;
-        } else if (type === 'county') {
-            lastCountyFeatures = allFeatures;
-        }
-
-        context.callCount--;
-        if (context.callCount === 0) {
-            updateNameDisplay(context);
-            const idx = PROCESS_CONTEXTS.indexOf(context);
-            if (idx > -1) {
-                PROCESS_CONTEXTS.splice(idx, 1);
-            }
-        }
-
-        if (sdk.State.getUserInfo().userName === 'MapOMatic') {
-            logDebug(`${type} points: ${pointCount} -> ${reducedPointCount} (${((1.0 - reducedPointCount / pointCount) * 100).toFixed(1)}%)`);
-        }
-    }
-
-    function getUspsRoutesUrl(lon, lat, radius) {
-        return USPS_ROUTES_URL_TEMPLATE.replace('{lon}', lon).replace('{lat}', lat).replace('{radius}', radius);
-    }
-
-    function getUspsCircleFeature() {
-        let center = sdk.Map.getMapCenter();
-        center = [center.lon, center.lat];
-        const radius = USPS_ROUTES_RADIUS;
-        const options = {
-            steps: 72,
-            units: 'miles',
-            properties: { type: 'circle' }
-        };
-        return turf.circle(center, radius, options);
-    }
-
-    function processUspsRoutesResponse(res) {
-        const data = $.parseJSON(res.responseText);
-        const routes = data.results[0].value.features;
-
-        const zipRoutes = {};
-        routes.forEach(route => {
-            const id = `${route.attributes.CITY_STATE} ${route.attributes.ZIP_CODE}`;
-            let zipRoute = zipRoutes[id];
-            if (!zipRoute) {
-                zipRoute = { paths: [] };
-                zipRoutes[id] = zipRoute;
-            }
-            zipRoute.paths = zipRoute.paths.concat(route.geometry.paths);
+          }
         });
-
-        const features = [];
-        _$uspsResultsDiv.empty();
-
-        const routeCount = Object.keys(zipRoutes).length;
-        Object.keys(zipRoutes).forEach((zipName, routeIdx) => {
-            const route = zipRoutes[zipName];
-            const color = USPS_ROUTE_COLORS[routeIdx];
-            const feature = turf.toWgs84(turf.multiLineString(route.paths), { type: 'route', color, zIndex: routeCount - routeIdx - 1 });
-
-            const lineStrings = feature.geometry.coordinates.map(coords => {
-                const ls = turf.lineString(coords, { type: 'route', color, zIndex: routeCount - routeIdx - 1 });
-                ls.id = 'route';
-                return ls;
-            });
-            features.push(...lineStrings);
-
-            _$uspsResultsDiv.append($('<div>').text(zipName).css({ color, fontWeight: 'bold' }));
-            routeIdx++;
-        });
-        _$getRoutesButton.removeAttr('disabled').css({ color: '#000' });
-        sdk.Map.addFeaturesToLayer({ layerName: USPS_ROUTES_LAYER_NAME, features });
+      }
     }
 
-    function fetchUspsRoutesFeatures() {
-        const centerLonLat = sdk.Map.getMapCenter();
-        const centerPoint = turf.toMercator(turf.point([centerLonLat.lon, centerLonLat.lat]));
-        const url = getUspsRoutesUrl(
-            centerPoint.geometry.coordinates[0],
-            centerPoint.geometry.coordinates[1],
-            USPS_ROUTES_RADIUS
-        );
-
-        _$getRoutesButton.attr('disabled', 'true').css({ color: '#888' });
-        _$uspsResultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
-        sdk.Map.removeAllFeaturesFromLayer({ layerName: USPS_ROUTES_LAYER_NAME });
-        GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse, anonymous: true });
+    if (type === 'zip') {
+      lastZipFeatures = allFeatures;
+    } else if (type === 'county') {
+      lastCountyFeatures = allFeatures;
     }
 
-    function fetchBoundaries() {
-        if (PROCESS_CONTEXTS.length > 0) {
-            PROCESS_CONTEXTS.forEach(context => { context.cancel = true; });
-        }
+    context.callCount--;
+    if (context.callCount === 0) {
+      updateNameDisplay(context);
+      const idx = PROCESS_CONTEXTS.indexOf(context);
+      if (idx > -1) {
+        PROCESS_CONTEXTS.splice(idx, 1);
+      }
+    }
 
-        const extent = sdk.Map.getMapExtent();
-        const zoom = sdk.Map.getZoomLevel();
-        let url;
-        const context = { callCount: 0, cancel: false };
-        PROCESS_CONTEXTS.push(context);
-        $('.us-boundary-region').remove();
-        $('.location-info-region').after(
-            $('<div>', { id: 'county-boundary', class: 'us-boundary-region' })
-                .css({ color: 'white', float: 'left', marginLeft: '10px' }),
-            $('<div>', { id: 'zip-boundary', class: 'us-boundary-region' })
-                .css({ color: 'white', float: 'left', marginLeft: '10px' })
-        );
-        if (_settings.layers.zips.visible) {
-            if (zoom > MIN_ZIPS_ZOOM) {
-                url = getUrl(ZIPS_LAYER_URL, extent, zoom, ['ZCTA5']);
-                context.callCount++;
-                $.ajax({
-                    url,
-                    context,
-                    method: 'GET',
-                    datatype: 'json',
-                    success(data) {
-                        if (data.error) {
-                            logError(`ZIP codes layer: ${data.error.message}`);
-                        } else {
-                            processBoundaries(data.features, this, 'zip', 'ZCTA5', 'ZCTA5');
-                        }
-                    }
-                });
+    if (sdk.State.getUserInfo().userName === 'MapOMatic' || sdk.State.getUserInfo().userName === 'JS55CT') {
+      logDebug(`${type} points: ${pointCount} -> ${reducedPointCount} (${((1.0 - reducedPointCount / pointCount) * 100).toFixed(1)}%)`);
+    }
+  }
+
+  function getUspsRoutesUrl(lon, lat, radius) {
+    return USPS_ROUTES_URL_TEMPLATE.replace('{lon}', lon).replace('{lat}', lat).replace('{radius}', radius);
+  }
+
+  function getUspsCircleFeature() {
+    let center = sdk.Map.getMapCenter();
+    center = [center.lon, center.lat];
+    const radius = _settings.uspsRoutes.radius;
+    const options = { steps: 72, units: 'miles', properties: { type: 'circle' } };
+    return turf.circle(center, radius, options);
+  }
+
+  function processUspsRoutesResponse(res) {
+    const data = $.parseJSON(res.responseText);
+    const routes = data.results[0].value.features;
+
+    const zipRoutes = {};
+    routes.forEach((route) => {
+      const id = `${route.attributes.CITY_STATE} ${route.attributes.ZIP_CODE}`;
+      let zipRoute = zipRoutes[id];
+      if (!zipRoute) {
+        zipRoute = { paths: [] };
+        zipRoutes[id] = zipRoute;
+      }
+      zipRoute.paths = zipRoute.paths.concat(route.geometry.paths);
+    });
+
+    const features = [];
+    _$uspsResultsDiv.empty();
+
+    const routeCount = Object.keys(zipRoutes).length;
+    Object.keys(zipRoutes).forEach((zipName, routeIdx) => {
+      const route = zipRoutes[zipName];
+      const color = USPS_ROUTE_COLORS[routeIdx];
+      const feature = turf.multiLineString(route.paths, { type: 'route', color, zIndex: routeCount - routeIdx - 1 });
+
+      const lineStrings = feature.geometry.coordinates.map((coords) => {
+        const ls = turf.lineString(coords, { type: 'route', color, zIndex: routeCount - routeIdx - 1 });
+        ls.id = 'route';
+        return ls;
+      });
+      features.push(...lineStrings);
+
+      _$uspsResultsDiv.append($('<div>').text(zipName).css({ color, fontWeight: 'bold' }));
+      routeIdx++;
+    });
+    _$getRoutesButton.removeAttr('disabled').css({ color: '#000' });
+    sdk.Map.addFeaturesToLayer({ layerName: USPS_ROUTES_LAYER_NAME, features });
+  }
+
+  function fetchUspsRoutesFeatures() {
+    const centerLonLat = sdk.Map.getMapCenter();
+    const url = getUspsRoutesUrl(centerLonLat.lon, centerLonLat.lat, _settings.uspsRoutes.radius);
+
+    _$getRoutesButton.attr('disabled', 'true').css({ color: '#888' });
+    _$uspsResultsDiv.empty().append('<i class="fa fa-spinner fa-pulse fa-3x fa-fw"></i>');
+    sdk.Map.removeAllFeaturesFromLayer({ layerName: USPS_ROUTES_LAYER_NAME });
+    GM_xmlhttpRequest({ url, onload: processUspsRoutesResponse, anonymous: true });
+  }
+
+  function redrawBoundaryLayers() {
+    sdk.Map.redrawLayer({ layerName: ZIPS_LAYER_NAME });
+    sdk.Map.redrawLayer({ layerName: COUNTIES_LAYER_NAME });
+    sdk.Map.redrawLayer({ layerName: STATES_LAYER_NAME });
+    sdk.Map.redrawLayer({ layerName: TIME_ZONES_LAYER_NAME });
+  }
+
+  function fetchBoundaries() {
+    if (PROCESS_CONTEXTS.length > 0) {
+      PROCESS_CONTEXTS.forEach((context) => { context.cancel = true; });
+    }
+
+    const extent = sdk.Map.getMapExtent();
+    const zoom = sdk.Map.getZoomLevel();
+    let url;
+    const context = { callCount: 0, cancel: false };
+    PROCESS_CONTEXTS.push(context);
+    $('.us-boundary-region').remove();
+    $('.location-info-region').after(
+      $('<div>', { id: 'county-boundary', class: 'us-boundary-region' }).css({ color: 'white', float: 'left', marginLeft: '10px' }),
+      $('<div>', { id: 'zip-boundary', class: 'us-boundary-region' }).css({ color: 'white', float: 'left', marginLeft: '10px' }),
+    );
+
+    if (_settings.layers.zips.visible) {
+      if (zoom >= _settings.layers.zips.minZoom) {
+        url = getUrl(ZIPS_LAYER_URL, extent, zoom, ['ZCTA5']);
+        context.callCount++;
+        $.ajax({
+          url, context, method: 'GET', datatype: 'json',
+          success(data) {
+            if (data.error) {
+              logError(`ZIP codes layer: ${data.error.message}`);
             } else {
-                // clear zips if zoomed out too far
-                processBoundaries([], context, 'zip', 'ZCTA5', 'ZCTA5');
+              processBoundaries(data.features, this, 'zip', 'ZCTA5');
             }
-        }
-        if (_settings.layers.counties.visible) {
-            if (zoom > MIN_COUNTIES_ZOOM) {
-                url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME']);
-                context.callCount++;
-                $.ajax({
-                    url,
-                    context,
-                    method: 'GET',
-                    datatype: 'json',
-                    success(data) {
-                        if (data.error) {
-                            logError(`counties layer: ${data.error.message}`);
-                        } else {
-                            processBoundaries(data.features, this, 'county', 'NAME', 'NAME');
-                        }
-                    }
-                });
+          },
+        });
+      } else {
+        processBoundaries([], context, 'zip', 'ZCTA5');
+      }
+    }
+    if (_settings.layers.counties.visible) {
+      if (zoom >= _settings.layers.counties.minZoom) {
+        url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME']);
+        context.callCount++;
+        $.ajax({
+          url, context, method: 'GET', datatype: 'json',
+          success(data) {
+            if (data.error) {
+              logError(`counties layer: ${data.error.message}`);
             } else {
-                // clear counties if zoomed out too far
-                processBoundaries([], context, 'county', 'NAME', 'NAME');
+              processBoundaries(data.features, this, 'county', 'NAME');
             }
-        }
-        if (_settings.layers.timeZones.visible) {
-            url = getUrl(TIME_ZONES_LAYER_URL, extent, zoom, ['ZONE']);
-            context.callCount++;
-            $.ajax({
-                url,
-                context,
-                method: 'GET',
-                datatype: 'json',
-                success(data) {
-                    if (data.error) {
-                        logError(`timezones layer: ${data.error.message}`);
-                    } else {
-                        processBoundaries(data.features, this, 'timeZone', 'ZONE', 'ZONE');
-                    }
-                }
-            });
-        }
-        if (_settings.layers.states.visible) {
-            url = getUrl(STATES_LAYER_URL, extent, zoom, ['NAME']);
-            context.callCount++;
-            $.ajax({
-                url,
-                context,
-                method: 'GET',
-                datatype: 'json',
-                success(data) {
-                    if (data.error) {
-                        logError(`states layer: ${data.error.message}`);
-                    } else {
-                        processBoundaries(data.features, this, 'state', 'NAME', 'NAME');
-                    }
-                }
-            });
-        }
-    }
-
-    function onLayerCheckboxToggled(args) {
-        let layerName;
-        let settingsObj;
-        switch (args.name) {
-            case zipsLayerCheckboxName:
-                layerName = ZIPS_LAYER_NAME;
-                settingsObj = _settings.layers.zips;
-                break;
-            case countiesLayerCheckboxName:
-                layerName = COUNTIES_LAYER_NAME;
-                settingsObj = _settings.layers.counties;
-                break;
-            case statesLayerCheckboxName:
-                layerName = STATES_LAYER_NAME;
-                settingsObj = _settings.layers.states;
-                break;
-            case timeZonesLayerCheckboxName:
-                layerName = TIME_ZONES_LAYER_NAME;
-                settingsObj = _settings.layers.timeZones;
-                break;
-            default:
-                throw new Error('Unexpected layer switcher checkbox name.');
-        }
-        const visibility = args.checked;
-        settingsObj.visible = visibility;
-        saveSettings();
-        sdk.Map.setLayerVisibility({ layerName, visibility });
-        fetchBoundaries();
-    }
-
-    function onDynamicLabelsCheckboxChanged(settingName, checkboxId) {
-        _settings.layers[settingName].dynamicLabels = $(`#${checkboxId}`).is(':checked');
-        saveSettings();
-        fetchBoundaries();
-    }
-
-    function onGetRoutesButtonClick() {
-        fetchUspsRoutesFeatures();
-    }
-
-    function onGetRoutesButtonMouseEnter() {
-        _$getRoutesButton.css({ color: '#00a' });
-        const feature = getUspsCircleFeature();
-        feature.id = 'uspsCircle';
-        sdk.Map.addFeatureToLayer({ layerName: USPS_ROUTES_LAYER_NAME, feature });
-    }
-
-    function onGetRoutesButtonMouseLeave() {
-        _$getRoutesButton.css({ color: '#000' });
-        sdk.Map.removeFeatureFromLayer({ layerName: USPS_ROUTES_LAYER_NAME, featureId: 'uspsCircle' });
-    }
-
-    function onClearRoutesButtonClick() {
-        sdk.Map.removeAllFeaturesFromLayer({ layerName: USPS_ROUTES_LAYER_NAME });
-        _$uspsResultsDiv.empty();
-    }
-
-    function onMapMoveEnd() {
-        try {
-            fetchBoundaries();
-        } catch (e) {
-            logError(e);
-        }
-    }
-
-    function showScriptInfoAlert() {
-        WazeWrap.Interface.ShowScriptUpdate(
-            GM_info.script.name,
-            GM_info.script.version,
-            UPDATE_MESSAGE,
-            '',
-            'https://www.waze.com/discuss/t/115019'
-        );
-    }
-
-    function initCountiesLayer() {
-        sdk.Map.addLayer({
-            layerName: COUNTIES_LAYER_NAME,
-            styleContext: {
-                getLabel: context => {
-                    const zoom = sdk.Map.getZoomLevel();
-                    const { label } = context.feature.properties;
-                    if (zoom <= 9) {
-                        return label.replace(/\s(County|Parish)/, '');
-                    }
-                    return label;
-                },
-                getFontSize: () => {
-                    const zoom = sdk.Map.getZoomLevel();
-                    if (zoom <= 9) {
-                        return '16px';
-                    }
-                    return '18px';
-                },
-                getStrokeWidth: () => {
-                    const zoom = sdk.Map.getZoomLevel();
-                    if (zoom <= 9) {
-                        return 3;
-                    }
-                    return 6;
-                }
-            },
-            styleRules: [
-                {
-                    style: {
-                        strokeColor: 'pink',
-                        strokeOpacity: 1,
-                        strokeWidth: '${getStrokeWidth}',
-                        strokeDashstyle: 'solid',
-                        fillOpacity: 0,
-                        pointRadius: 0,
-                        label: '${getLabel}',
-                        fontSize: '${getFontSize}',
-                        fontFamily: 'Arial',
-                        fontWeight: 'bold',
-                        fontColor: 'pink',
-                        labelOutlineColor: 'black',
-                        labelOutlineWidth: 2
-                    }
-                }
-            ]
+          },
         });
+      } else {
+        processBoundaries([], context, 'county', 'NAME');
+      }
     }
-
-    function initStatesLayer() {
-        sdk.Map.addLayer({
-            layerName: STATES_LAYER_NAME,
-            styleContext: {
-                getStrokeWidth: () => {
-                    const zoomLevel = sdk.Map.getZoomLevel();
-                    if (zoomLevel < 5) {
-                        return 1;
-                    }
-                    if (zoomLevel <= 6) {
-                        return 3;
-                    }
-                    if (zoomLevel <= 11) {
-                        return 2;
-                    }
-                    if (zoomLevel <= 15) {
-                        return 3;
-                    }
-                    return 4;
-                },
-                getFontSize: () => {
-                    const zoomLevel = sdk.Map.getZoomLevel();
-                    if (zoomLevel < 5) {
-                        return '14px';
-                    }
-                    if (zoomLevel <= 11) {
-                        return '16px';
-                    }
-                    return '18px';
-                },
-                getLabelYOffset: () => {
-                    const zoomLevel = sdk.Map.getZoomLevel();
-                    if (zoomLevel <= 9) {
-                        return 0;
-                    }
-                    return 20;
-                },
-                getLabel: context => {
-                    const zoomLevel = sdk.Map.getZoomLevel();
-                    if (zoomLevel < 5 || zoomLevel > 15) {
-                        return '';
-                    }
-                    return context.feature.properties.label;
-                }
-            },
-            styleRules: [
-                {
-                    predicate: properties => properties.type === 'label',
-                    style: {
-                        pointRadius: 0,
-                        fontSize: '${getFontSize}',
-                        fontFamily: 'Arial',
-                        fontWeight: 'bold',
-                        fontColor: 'blue',
-                        label: '${getLabel}',
-                        labelYOffset: '${getLabelYOffset}',
-                        labelOutlineColor: 'lightblue',
-                        labelOutlineWidth: 2
-                    }
-                },
-                {
-                    predicate: properties => properties.type === 'state',
-                    style: {
-                        strokeColor: 'blue',
-                        strokeOpacity: 1,
-                        strokeWidth: '${getStrokeWidth}',
-                        strokeDashstyle: 'solid',
-                        fillOpacity: 0
-                    }
-                }
-            ]
-        });
+    if (_settings.layers.timeZones.visible) {
+      url = getUrl(TIME_ZONES_LAYER_URL, extent, zoom, ['ZONE']);
+      context.callCount++;
+      $.ajax({
+        url, context, method: 'GET', datatype: 'json',
+        success(data) {
+          if (data.error) {
+            logError(`timezones layer: ${data.error.message}`);
+          } else {
+            processBoundaries(data.features, this, 'timeZone', 'ZONE');
+          }
+        },
+      });
     }
-
-    function initZipsLayer() {
-        sdk.Map.addLayer({
-            layerName: ZIPS_LAYER_NAME,
-            styleContext: {
-                getLabel: context => context.feature.properties.label
-            },
-            styleRules: [
-                {
-                    style: {
-                        pointRadius: 0,
-                        strokeColor: '#FF0000',
-                        strokeOpacity: 1,
-                        strokeWidth: 3,
-                        strokeDashstyle: 'solid',
-                        fillOpacity: 0,
-                        fontSize: '16px',
-                        fontFamily: 'Arial',
-                        fontWeight: 'bold',
-                        fontColor: 'red',
-                        label: '${getLabel}',
-                        labelYOffset: -20,
-                        labelOutlineColor: 'white',
-                        labelOutlineWidth: 2
-                    }
-                }
-            ]
-        });
+    if (_settings.layers.states.visible) {
+      url = getUrl(STATES_LAYER_URL, extent, zoom, ['NAME']);
+      context.callCount++;
+      $.ajax({
+        url, context, method: 'GET', datatype: 'json',
+        success(data) {
+          if (data.error) {
+            logError(`states layer: ${data.error.message}`);
+          } else {
+            processBoundaries(data.features, this, 'state', 'NAME');
+          }
+        },
+      });
     }
+  }
 
-    function initTimeZonesLayer() {
-        sdk.Map.addLayer({
-            layerName: TIME_ZONES_LAYER_NAME,
-            styleContext: {
-                getLabel: context => context.feature.properties.label
-            },
-            styleRules: [
-                {
-                    style: {
-                        pointRadius: 0,
-                        strokeColor: '#f85',
-                        strokeOpacity: 1,
-                        strokeWidth: 6,
-                        strokeDashstyle: 'solid',
-                        fillOpacity: 0,
-                        fontSize: '18px',
-                        fontFamily: 'Arial',
-                        fontWeight: 'bold',
-                        fontColor: '#f85',
-                        label: '${getLabel}',
-                        labelYOffset: -40,
-                        labelOutlineColor: '#831',
-                        labelOutlineWidth: 2
-                    }
-                }
-            ]
-        });
+  function onLayerCheckboxToggled(args) {
+    let layerName;
+    let settingsObj;
+    switch (args.name) {
+      case zipsLayerCheckboxName:
+        layerName = ZIPS_LAYER_NAME;
+        settingsObj = _settings.layers.zips;
+        break;
+      case countiesLayerCheckboxName:
+        layerName = COUNTIES_LAYER_NAME;
+        settingsObj = _settings.layers.counties;
+        break;
+      case statesLayerCheckboxName:
+        layerName = STATES_LAYER_NAME;
+        settingsObj = _settings.layers.states;
+        break;
+      case timeZonesLayerCheckboxName:
+        layerName = TIME_ZONES_LAYER_NAME;
+        settingsObj = _settings.layers.timeZones;
+        break;
+      default:
+        throw new Error('Unexpected layer switcher checkbox name.');
     }
+    const visibility = args.checked;
+    settingsObj.visible = visibility;
+    saveSettings();
+    sdk.Map.setLayerVisibility({ layerName, visibility });
+    fetchBoundaries();
+  }
 
-    function initLayers() {
-        initZipsLayer();
-        initCountiesLayer();
-        initStatesLayer();
-        initTimeZonesLayer();
+  function onGetRoutesButtonClick() { fetchUspsRoutesFeatures(); }
 
-        sdk.Map.addLayer({
-            layerName: USPS_ROUTES_LAYER_NAME,
-            styleContext: {
-                getStrokeWidth: context => {
-                    const zoom = sdk.Map.getZoomLevel();
-                    let width = zoom < 3 ? 10 + 2 * zoom : 16;
-                    width += context.feature.properties.zIndex * 6;
-                    return width;
-                },
-                getStrokeColor: context => context.feature.properties.color
-            },
-            styleRules: [
-                {
-                    predicate: properties => properties.type === 'route',
-                    style: {
-                        strokeWidth: '${getStrokeWidth}',
-                        strokeColor: '${getStrokeColor}'
-                    }
-                },
-                {
-                    predicate: properties => properties.type === 'circle',
-                    style: {
-                        strokeWidth: 6,
-                        strokeColor: '#ff0',
-                        fillColor: '#ff0',
-                        fillOpacity: 0.2
-                    }
-                }
-            ]
-        });
+  function onGetRoutesButtonMouseEnter() {
+    _$getRoutesButton.css({ color: '#00a' });
+    const feature = getUspsCircleFeature();
+    feature.id = 'uspsCircle';
+    sdk.Map.addFeatureToLayer({ layerName: USPS_ROUTES_LAYER_NAME, feature });
+  }
 
-        sdk.Map.setLayerOpacity({ layerName: ZIPS_LAYER_NAME, opacity: 0.6 });
-        sdk.Map.setLayerOpacity({ layerName: COUNTIES_LAYER_NAME, opacity: 0.6 });
-        sdk.Map.setLayerOpacity({ layerName: STATES_LAYER_NAME, opacity: 0.6 });
-        sdk.Map.setLayerOpacity({ layerName: TIME_ZONES_LAYER_NAME, opacity: 0.6 });
-        sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: 0.8 });
+  function onGetRoutesButtonMouseLeave() {
+    _$getRoutesButton.css({ color: '#000' });
+    sdk.Map.removeFeatureFromLayer({ layerName: USPS_ROUTES_LAYER_NAME, featureId: 'uspsCircle' });
+  }
 
-        sdk.Map.setLayerVisibility({ layerName: ZIPS_LAYER_NAME, visibility: _settings.layers.zips.visible });
-        sdk.Map.setLayerVisibility({ layerName: COUNTIES_LAYER_NAME, visibility: _settings.layers.counties.visible });
-        sdk.Map.setLayerVisibility({ layerName: STATES_LAYER_NAME, visibility: _settings.layers.states.visible });
-        sdk.Map.setLayerVisibility({ layerName: TIME_ZONES_LAYER_NAME, visibility: _settings.layers.timeZones.visible });
+  function onClearRoutesButtonClick() {
+    sdk.Map.removeAllFeaturesFromLayer({ layerName: USPS_ROUTES_LAYER_NAME });
+    _$uspsResultsDiv.empty();
+  }
 
-        const zIndex = sdk.Map.getLayerZIndex({ layerName: 'roads' }) - 2;
+  function onMapMoveEnd() {
+    try { fetchBoundaries(); } catch (e) { logError(e); }
+  }
+
+  function showScriptInfoAlert() {
+    WazeWrap.Interface.ShowScriptUpdate(GM_info.script.name, GM_info.script.version, UPDATE_MESSAGE, '', 'https://www.waze.com/discuss/t/115019');
+  }
+
+  function initCountiesLayer() {
+    sdk.Map.addLayer({
+      layerName: COUNTIES_LAYER_NAME,
+      styleContext: {
+        getLabel: ({ feature, zoomLevel }) => {
+          const rawLabel = feature?.properties?.label ?? '';
+          if (zoomLevel <= 9) return rawLabel.replace(/\s(County|Parish)$/, '');
+          return rawLabel;
+        },
+        getFontSize: ({ zoomLevel }) => `${Math.round(14 + (zoomLevel - 4) * 0.5)}px`,
+        getStrokeWidth: ({ zoomLevel }) => Math.round(2 + (zoomLevel - 4) * 0.33),
+        getStrokeColor: () => _settings.layers.counties.color,
+        getFontColor: () => _settings.layers.counties.color,
+        getLabelOutlineColor: () => _settings.layers.counties.labelOutlineColor,
+      },
+      styleRules: [{
+        style: {
+          strokeColor: '${getStrokeColor}',
+          strokeOpacity: 1,
+          strokeWidth: '${getStrokeWidth}',
+          strokeDashstyle: 'solid',
+          fillOpacity: 0,
+          pointRadius: 0,
+          label: '${getLabel}',
+          fontSize: '${getFontSize}',
+          fontFamily: 'Arial',
+          fontWeight: 'bold',
+          fontColor: '${getFontColor}',
+          labelOutlineColor: '${getLabelOutlineColor}',
+          labelOutlineWidth: 2,
+        },
+      }],
+    });
+  }
+
+  function initStatesLayer() {
+    sdk.Map.addLayer({
+      layerName: STATES_LAYER_NAME,
+      styleContext: {
+        getStrokeWidth: ({ zoomLevel }) => Math.round(1 + (zoomLevel - 4) * 0.29),
+        getFontSize: ({ zoomLevel }) => `${Math.round(12 + (zoomLevel - 4) * 0.67)}px`,
+        getLabelYOffset: ({ zoomLevel }) => {
+          if (zoomLevel < 10) return 0;
+          if (zoomLevel < 18) return 10;
+          return 20;
+        },
+        getLabel: ({ feature, zoomLevel }) => {
+          if (zoomLevel < 5) return '';
+          if (zoomLevel > 21) return '';
+          return feature?.properties?.label ?? '';
+        },
+        getStrokeColor: () => _settings.layers.states.color,
+        getFontColor: () => _settings.layers.states.color,
+        getLabelOutlineColor: () => _settings.layers.states.labelOutlineColor,
+      },
+      styleRules: [
+        {
+          predicate: (properties) => properties.type === 'label',
+          style: {
+            pointRadius: 0,
+            fontSize: '${getFontSize}',
+            fontFamily: 'Arial',
+            fontWeight: 'bold',
+            fontColor: '${getFontColor}',
+            label: '${getLabel}',
+            labelYOffset: '${getLabelYOffset}',
+            labelOutlineColor: '${getLabelOutlineColor}',
+            labelOutlineWidth: 2,
+          },
+        },
+        {
+          predicate: (properties) => properties.type === 'state',
+          style: {
+            strokeColor: '${getStrokeColor}',
+            strokeOpacity: 1,
+            strokeWidth: '${getStrokeWidth}',
+            strokeDashstyle: 'solid',
+            fillOpacity: 0,
+          },
+        },
+      ],
+    });
+  }
+
+  function initZipsLayer() {
+    sdk.Map.addLayer({
+      layerName: ZIPS_LAYER_NAME,
+      styleContext: {
+        getLabel: ({ feature }) => feature?.properties?.label ?? '',
+        getStrokeWidth: ({ zoomLevel }) => Math.round(1 + (zoomLevel - 4) * 0.29),
+        getFontSize: ({ zoomLevel }) => `${Math.round(12 + (zoomLevel - 4) * 0.67)}px`,
+        getStrokeColor: () => _settings.layers.zips.color,
+        getFontColor: () => _settings.layers.zips.color,
+        getLabelOutlineColor: () => _settings.layers.zips.labelOutlineColor,
+      },
+      styleRules: [{
+        style: {
+          pointRadius: 0,
+          strokeColor: '${getStrokeColor}',
+          strokeOpacity: 1,
+          strokeWidth: '${getStrokeWidth}',
+          strokeDashstyle: 'solid',
+          fillOpacity: 0,
+          fontSize: '${getFontSize}',
+          fontFamily: 'Arial',
+          fontWeight: 'bold',
+          fontColor: '${getFontColor}',
+          label: '${getLabel}',
+          labelYOffset: -20,
+          labelOutlineColor: '${getLabelOutlineColor}',
+          labelOutlineWidth: 2,
+        },
+      }],
+    });
+  }
+
+  function initTimeZonesLayer() {
+    sdk.Map.addLayer({
+      layerName: TIME_ZONES_LAYER_NAME,
+      styleContext: {
+        getLabel: (context) => context.feature.properties.label,
+        getStrokeColor: () => _settings.layers.timeZones.color,
+        getFontColor: () => _settings.layers.timeZones.color,
+        getLabelOutlineColor: () => _settings.layers.timeZones.labelOutlineColor,
+      },
+      styleRules: [{
+        style: {
+          pointRadius: 0,
+          strokeColor: '${getStrokeColor}',
+          strokeOpacity: 1,
+          strokeWidth: 6,
+          strokeDashstyle: 'solid',
+          fillOpacity: 0,
+          fontSize: '18px',
+          fontFamily: 'Arial',
+          fontWeight: 'bold',
+          fontColor: '${getFontColor}',
+          label: '${getLabel}',
+          labelYOffset: -40,
+          labelOutlineColor: '${getLabelOutlineColor}',
+          labelOutlineWidth: 2,
+        },
+      }],
+    });
+  }
+
+  function initLayers() {
+    initZipsLayer();
+    initCountiesLayer();
+    initStatesLayer();
+    initTimeZonesLayer();
+
+    sdk.Map.addLayer({
+      layerName: USPS_ROUTES_LAYER_NAME,
+      styleContext: {
+        getStrokeWidth: (context) => {
+          const zoom = sdk.Map.getZoomLevel();
+          let width = zoom < 3 ? 10 + 2 * zoom : 16;
+          width += context.feature.properties.zIndex * 6;
+          return width;
+        },
+        getStrokeColor: (context) => context.feature.properties.color,
+      },
+      styleRules: [
+        {
+          predicate: (properties) => properties.type === 'route',
+          style: { strokeWidth: '${getStrokeWidth}', strokeColor: '${getStrokeColor}' },
+        },
+        {
+          predicate: (properties) => properties.type === 'circle',
+          style: { strokeWidth: 6, strokeColor: '#ff0', fillColor: '#ff0', fillOpacity: 0.2 },
+        },
+      ],
+    });
+
+    sdk.Map.setLayerOpacity({ layerName: ZIPS_LAYER_NAME, opacity: _settings.layers.zips.opacity });
+    sdk.Map.setLayerOpacity({ layerName: COUNTIES_LAYER_NAME, opacity: _settings.layers.counties.opacity });
+    sdk.Map.setLayerOpacity({ layerName: STATES_LAYER_NAME, opacity: _settings.layers.states.opacity });
+    sdk.Map.setLayerOpacity({ layerName: TIME_ZONES_LAYER_NAME, opacity: _settings.layers.timeZones.opacity });
+    sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: _settings.uspsRoutes.opacity });
+
+    sdk.Map.setLayerVisibility({ layerName: ZIPS_LAYER_NAME, visibility: _settings.layers.zips.visible });
+    sdk.Map.setLayerVisibility({ layerName: COUNTIES_LAYER_NAME, visibility: _settings.layers.counties.visible });
+    sdk.Map.setLayerVisibility({ layerName: STATES_LAYER_NAME, visibility: _settings.layers.states.visible });
+    sdk.Map.setLayerVisibility({ layerName: TIME_ZONES_LAYER_NAME, visibility: _settings.layers.timeZones.visible });
+
+    const zIndex = sdk.Map.getLayerZIndex({ layerName: 'roads' }) - 2;
+    sdk.Map.setLayerZIndex({ layerName: USPS_ROUTES_LAYER_NAME, zIndex });
+
+    const checkLayerZIndex = () => {
+      if (sdk.Map.getLayerZIndex({ layerName: USPS_ROUTES_LAYER_NAME }) !== zIndex) {
         sdk.Map.setLayerZIndex({ layerName: USPS_ROUTES_LAYER_NAME, zIndex });
+      }
+    };
+    setInterval(() => { checkLayerZIndex(); }, 100);
 
-        // HACK to get around conflict with URO+.  If URO+ is fixed, this can be replaced with the setLayerIndex line above.
-        const checkLayerZIndex = () => {
-            if (sdk.Map.getLayerZIndex({ layerName: USPS_ROUTES_LAYER_NAME }) !== zIndex) {
-                sdk.Map.setLayerZIndex({ layerName: USPS_ROUTES_LAYER_NAME, zIndex });
-            }
-        };
-        setInterval(() => { checkLayerZIndex(); }, 100);
-        // END HACK
+    sdk.LayerSwitcher.addLayerCheckbox({ name: statesLayerCheckboxName });
+    sdk.LayerSwitcher.setLayerCheckboxChecked({ name: statesLayerCheckboxName, isChecked: _settings.layers.states.visible });
+    sdk.LayerSwitcher.addLayerCheckbox({ name: countiesLayerCheckboxName });
+    sdk.LayerSwitcher.setLayerCheckboxChecked({ name: countiesLayerCheckboxName, isChecked: _settings.layers.counties.visible });
+    sdk.LayerSwitcher.addLayerCheckbox({ name: zipsLayerCheckboxName });
+    sdk.LayerSwitcher.setLayerCheckboxChecked({ name: zipsLayerCheckboxName, isChecked: _settings.layers.zips.visible });
+    sdk.LayerSwitcher.addLayerCheckbox({ name: timeZonesLayerCheckboxName });
+    sdk.LayerSwitcher.setLayerCheckboxChecked({ name: timeZonesLayerCheckboxName, isChecked: _settings.layers.timeZones.visible });
 
-        // SDK: (not a blocking issue) FR to set checkbox state when adding instead of having to setLayerChekboxChecked immediately: https://issuetracker.google.com/issues/412712079
-        // Add the layer checkbox to the Layers menu.
-        sdk.LayerSwitcher.addLayerCheckbox({ name: statesLayerCheckboxName });
-        sdk.LayerSwitcher.setLayerCheckboxChecked({ name: statesLayerCheckboxName, isChecked: _settings.layers.states.visible });
-        sdk.LayerSwitcher.addLayerCheckbox({ name: countiesLayerCheckboxName });
-        sdk.LayerSwitcher.setLayerCheckboxChecked({ name: countiesLayerCheckboxName, isChecked: _settings.layers.counties.visible });
-        sdk.LayerSwitcher.addLayerCheckbox({ name: zipsLayerCheckboxName });
-        sdk.LayerSwitcher.setLayerCheckboxChecked({ name: zipsLayerCheckboxName, isChecked: _settings.layers.zips.visible });
-        sdk.LayerSwitcher.addLayerCheckbox({ name: timeZonesLayerCheckboxName });
-        sdk.LayerSwitcher.setLayerCheckboxChecked({ name: timeZonesLayerCheckboxName, isChecked: _settings.layers.timeZones.visible });
+    sdk.Events.on({ eventName: 'wme-layer-checkbox-toggled', eventHandler: onLayerCheckboxToggled });
+    sdk.Events.on({ eventName: 'wme-map-move-end', eventHandler: onMapMoveEnd });
+  }
 
-        sdk.Events.on({ eventName: 'wme-layer-checkbox-toggled', eventHandler: onLayerCheckboxToggled });
+  const LAYER_NAME_MAP = {
+    zips: ZIPS_LAYER_NAME,
+    counties: COUNTIES_LAYER_NAME,
+    states: STATES_LAYER_NAME,
+    timeZones: TIME_ZONES_LAYER_NAME,
+  };
 
-        // _zipsLayer.events.register('visibilitychanged', null, onZipsLayerVisibilityChanged);
-        // _countiesLayer.events.register('visibilitychanged', null, onCountiesLayerVisibilityChanged);
-        // _statesLayer.events.register('visibilitychanged', null, onStatesLayerVisibilityChanged);
-        // _timeZonesLayer.events.register('visibilitychanged', null, onTimeZonesLayerVisibilityChanged);
+  const WME_FONT = '"Rubik","Waze Boing","Waze Boing HB light",sans-serif';
+  const V = {
+    contentDefault: 'var(--content_default)',
+    contentP1: 'var(--content_p1)',
+    contentP2: 'var(--content_p2)',
+    contentP3: 'var(--content_p3)',
+    hairline: 'var(--hairline)',
+    surfaceDefault: 'var(--surface_default)',
+    surfaceVariant: 'var(--surface_variant)',
+    separator: 'var(--separator_default)',
+    primary: 'var(--primary)',
+    primaryVariant: 'var(--primary_variant)',
+    onPrimary: 'var(--on_primary)',
+    bgDefault: 'var(--background_default)',
+  };
 
-        sdk.Events.on({ eventName: 'wme-map-move-end', eventHandler: onMapMoveEnd });
+  function buildLayerFieldsetHtml(layerKey, displayName, opts = {}) {
+    const s = _settings.layers[layerKey];
+    const { showMinZoom = false, showDynamicLabels = true } = opts;
+    const pfx = `usgb-${layerKey}`;
+
+    let html = `<fieldset style="border:1px solid ${V.hairline};padding:12px;border-radius:8px;margin-bottom:8px;background:${V.bgDefault};">`;
+    html += `<legend style="margin-bottom:0;border-bottom-style:none;width:auto;padding:0 4px;">
+      <span style="font-family:${WME_FONT};font-size:14px;font-weight:500;color:${V.contentDefault};letter-spacing:0.2px;">${displayName}</span>
+    </legend>`;
+
+    if (showDynamicLabels) {
+      html += `<div style="padding-top:0;margin-bottom:8px;display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="${pfx}-dynamicLabels" ${s.dynamicLabels ? 'checked' : ''}
+          style="width:16px;height:16px;accent-color:${V.primary};cursor:pointer;" />
+        <label for="${pfx}-dynamicLabels" style="font-family:${WME_FONT};font-size:13px;color:${V.contentP1};letter-spacing:0.2px;cursor:pointer;">Dynamic label positions</label>
+      </div>`;
     }
 
-    function initTab() {
-        const $content = $('<div>').append(
-            $('<fieldset>', { style: 'border:1px solid silver;padding:8px;border-radius:4px;' }).append(
-                $('<legend>', { style: 'margin-bottom:0px;borer-bottom-style:none;width:auto;' }).append(
-                    $('<h4>').text('ZIP Codes')
-                ),
-                $('<div>', { class: 'controls-container', style: 'padding-top:0px' }).append(
-                    $('<input>', { type: 'checkbox', id: 'usgb-zips-dynamicLabels' }),
-                    $('<label>', { for: 'usgb-zips-dynamicLabels' }).text('Dynamic label positions')
-                )
-            ),
-            $('<fieldset>', { style: 'border:1px solid silver;padding:8px;border-radius:4px;' }).append(
-                $('<legend>', { style: 'margin-bottom:0px;borer-bottom-style:none;width:auto;' }).append(
-                    $('<h4>').text('Counties')
-                ),
-                $('<div>', { class: 'controls-container', style: 'padding-top:0px' }).append(
-                    $('<input>', { type: 'checkbox', id: 'usgb-counties-dynamicLabels' }),
-                    $('<label>', { for: 'usgb-counties-dynamicLabels' }).text('Dynamic label positions')
-                )
-            ),
-            $('<fieldset>', { style: 'border:1px solid silver;padding:8px;border-radius:4px;' }).append(
-                $('<legend>', { style: 'margin-bottom:0px;borer-bottom-style:none;width:auto;' }).append(
-                    $('<h4>').text('Time zones')
-                ),
-                $('<div>', { class: 'controls-container', style: 'padding-top:0px' }).append(
-                    $('<input>', { type: 'checkbox', id: 'usgb-timezones-dynamicLabels' }),
-                    $('<label>', { for: 'usgb-timezones-dynamicLabels' }).text('Dynamic label positions')
-                )
-            ),
-            $('<div>').append(
-                $('<span>', { style: 'font-style: italic; white-space: pre-line' })
-                    .text('Notes:'
-                        + '\n- ZIP code boundaries are rough approximations because '
-                        + 'ZIP codes are not actually areas. Prefer the "Get USPS routes" '
-                        + 'feature whenever possible.'
-                        + '\n- Time zone boundaries are rough approximations, '
-                        + 'and may not display properly above zoom level 5.')
-            )
-        );
+    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <label style="font-family:${WME_FONT};font-size:13px;color:${V.contentP2};min-width:30px;letter-spacing:0.2px;">Color</label>
+      <input type="color" id="${pfx}-color" value="${s.color}"
+        style="width:32px;height:28px;padding:1px;border:1px solid ${V.hairline};border-radius:4px;cursor:pointer;background:${V.surfaceDefault};" />
+      <label style="font-family:${WME_FONT};font-size:13px;color:${V.contentP2};min-width:50px;letter-spacing:0.2px;">Label Outline</label>
+      <input type="color" id="${pfx}-labelOutlineColor" value="${s.labelOutlineColor}"
+        style="width:32px;height:28px;padding:1px;border:1px solid ${V.hairline};border-radius:4px;cursor:pointer;background:${V.surfaceDefault};" />
+    </div>`;
 
-        WazeWrap.Interface.Tab('USGB', $content.html(), () => {
-            $('#usgb-zips-dynamicLabels').prop('checked', _settings.layers.zips.dynamicLabels).change(() => {
-                onDynamicLabelsCheckboxChanged('zips', 'usgb-zips-dynamicLabels');
-            });
-            $('#usgb-counties-dynamicLabels').prop('checked', _settings.layers.counties.dynamicLabels).change(() => {
-                onDynamicLabelsCheckboxChanged('counties', 'usgb-counties-dynamicLabels');
-            });
-            $('#usgb-timezones-dynamicLabels').prop('checked', _settings.layers.counties.dynamicLabels).change(() => {
-                onDynamicLabelsCheckboxChanged('timeZones', 'usgb-timezones-dynamicLabels');
-            });
-        }, null);
+    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <label for="${pfx}-opacity" style="font-family:${WME_FONT};font-size:13px;color:${V.contentP2};min-width:42px;letter-spacing:0.2px;">Opacity</label>
+      <input type="range" id="${pfx}-opacity" min="0" max="1" step="0.05" value="${s.opacity}"
+        style="flex:1;accent-color:${V.primary};height:4px;" />
+      <span id="${pfx}-opacity-val" style="font-family:${WME_FONT};font-size:13px;color:${V.contentP3};min-width:28px;text-align:right;">${s.opacity}</span>
+    </div>`;
+
+    if (showMinZoom) {
+      html += `<div style="display:flex;align-items:center;gap:8px;">
+        <label for="${pfx}-minZoom" style="font-family:${WME_FONT};font-size:13px;color:${V.contentP2};letter-spacing:0.2px;">Min Zoom</label>
+        <input type="number" id="${pfx}-minZoom" min="1" max="22" value="${s.minZoom}"
+          style="width:56px;height:32px;font-family:${WME_FONT};font-size:13px;color:${V.contentDefault};border:1px solid ${V.hairline};border-radius:4px;padding:0 8px;background:${V.surfaceDefault};" />
+      </div>`;
     }
 
-    function onSelectionChanged() {
-        const container = $('#usps-routes-container');
-        const selection = sdk.Editing.getSelection();
-        if (selection?.objectType === 'segment') {
-            container.show();
-        } else {
-            container.hide();
-        }
-    }
+    html += '</fieldset>';
+    return html;
+  }
 
-    function initUspsRoutes() {
-        _$uspsResultsDiv = $('<div>', { id: 'usps-route-results', style: 'margin-top:3px;' });
-        _$getRoutesButton = $('<button>', { id: 'get-usps-routes', style: 'height:23px;' }).text('Get USPS routes');
-        // TODO: 2022-11-22 - This is temporary to determine which parent element to add the div to, depending on beta or production WME.
-        // Remove once new side panel is pushed to production.
-        const $parent = $('wz-navigation-item').length > 0 ? $('#edit-panel > div.contents') : $('#user-info > div.flex-parent');
-        $parent.prepend( // '#user-info > div.flex-parent'
-            $('<div>', { id: 'usps-routes-container', style: 'margin-left:10px;margin-top:5px;' }).append(
-                _$getRoutesButton
-                    .click(onGetRoutesButtonClick)
-                    .mouseenter(onGetRoutesButtonMouseEnter)
-                    .mouseout(onGetRoutesButtonMouseLeave),
-                $('<button>', { id: 'clear-usps-routes', style: 'height:23px; margin-left:4px;' })
-                    .text('Clear')
-                    .click(onClearRoutesButtonClick),
-                _$uspsResultsDiv
-            )
-        );
-        document.addEventListener('wme-selection-changed', onSelectionChanged);
-    }
+  function attachLayerSettingsListeners(section, layerKey) {
+    const pfx = `usgb-${layerKey}`;
 
-    function init() {
-        loadSettings();
-        initLayers();
-        initTab();
-        showScriptInfoAlert();
+    const dlCb = section.querySelector(`#${pfx}-dynamicLabels`);
+    if (dlCb) {
+      dlCb.addEventListener('change', () => {
+        _settings.layers[layerKey].dynamicLabels = dlCb.checked;
+        saveSettings();
         fetchBoundaries();
-        initUspsRoutes();
-        log('Initialized.');
+      });
     }
 
-    init();
-}());
+    ['color', 'labelOutlineColor'].forEach((prop) => {
+      const input = section.querySelector(`#${pfx}-${prop}`);
+      if (input) {
+        input.addEventListener('change', () => {
+          _settings.layers[layerKey][prop] = input.value;
+          saveSettings();
+          sdk.Map.redrawLayer({ layerName: LAYER_NAME_MAP[layerKey] });
+        });
+      }
+    });
+
+    const opacityInput = section.querySelector(`#${pfx}-opacity`);
+    if (opacityInput) {
+      opacityInput.addEventListener('input', () => {
+        const val = parseFloat(opacityInput.value);
+        _settings.layers[layerKey].opacity = val;
+        section.querySelector(`#${pfx}-opacity-val`).textContent = val.toFixed(2);
+        sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[layerKey], opacity: val });
+        saveSettings();
+      });
+    }
+
+    const minZoomInput = section.querySelector(`#${pfx}-minZoom`);
+    if (minZoomInput) {
+      minZoomInput.addEventListener('change', () => {
+        _settings.layers[layerKey].minZoom = parseInt(minZoomInput.value, 10);
+        saveSettings();
+        fetchBoundaries();
+      });
+    }
+  }
+
+  function initTab() {
+    const section = document.createElement('div');
+    section.style.cssText = `font-family:${WME_FONT};font-size:14px;letter-spacing:0.2px;line-height:20px;color:${V.contentDefault};padding:8px 4px;`;
+
+    let html = '';
+    html += buildLayerFieldsetHtml('states', 'States', { showDynamicLabels: false });
+    html += buildLayerFieldsetHtml('counties', 'Counties', { showMinZoom: true });
+    html += buildLayerFieldsetHtml('zips', 'ZIP Codes', { showMinZoom: true });
+    html += buildLayerFieldsetHtml('timeZones', 'Time Zones');
+
+
+    const btnBase = `font-family:${WME_FONT};font-size:13px;font-weight:500;letter-spacing:0.2px;border-radius:8px;cursor:pointer;transition:background 0.15s,border-color 0.15s;`;
+    const btnPrimary = `${btnBase}height:36px;padding:0 16px;background:${V.primary};color:${V.onPrimary};border:none;`;
+    const btnSecondary = `${btnBase}height:36px;padding:0 16px;background:${V.bgDefault};color:${V.contentDefault};border:1px solid ${V.hairline};`;
+
+    html += `<fieldset style="border:1px solid ${V.hairline};padding:12px;border-radius:8px;margin-bottom:8px;background:${V.bgDefault};">`;
+    html += `<legend style="margin-bottom:0;border-bottom-style:none;width:auto;padding:0 4px;">
+      <span style="font-family:${WME_FONT};font-size:14px;font-weight:500;color:${V.contentDefault};letter-spacing:0.2px;">USPS Routes</span>
+    </legend>`;
+    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <label for="usgb-usps-radius" style="font-family:${WME_FONT};font-size:13px;color:${V.contentP2};letter-spacing:0.2px;">Radius (mi)</label>
+      <input type="number" id="usgb-usps-radius" min="0.5" max="2" step="0.1" value="${_settings.uspsRoutes.radius}"
+        style="width:64px;height:32px;font-family:${WME_FONT};font-size:13px;color:${V.contentDefault};border:1px solid ${V.hairline};border-radius:4px;padding:0 8px;background:${V.surfaceDefault};" />
+    </div>`;
+    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <label for="usgb-usps-opacity" style="font-family:${WME_FONT};font-size:13px;color:${V.contentP2};min-width:42px;letter-spacing:0.2px;">Opacity</label>
+      <input type="range" id="usgb-usps-opacity" min="0" max="1" step="0.05" value="${_settings.uspsRoutes.opacity}"
+        style="flex:1;accent-color:${V.primary};height:4px;" />
+      <span id="usgb-usps-opacity-val" style="font-family:${WME_FONT};font-size:13px;color:${V.contentP3};min-width:28px;text-align:right;">${_settings.uspsRoutes.opacity}</span>
+    </div>`;
+    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <button id="usgb-get-usps-routes" style="${btnPrimary}">Get USPS Routes</button>
+      <button id="usgb-clear-usps-routes" style="${btnSecondary}">Clear</button>
+    </div>`;
+    html += '<div id="usgb-usps-route-results" style="margin-top:4px;"></div>';
+    html += '</fieldset>';
+
+    html += `<div style="margin-top:8px;margin-bottom:12px;">
+      <button id="usgb-reset-defaults" style="${btnSecondary}width:100%;">Reset All to Defaults</button>
+    </div>`;
+
+    html += `<div style="background:${V.surfaceDefault};border-radius:8px;padding:12px;margin-bottom:8px;">
+      <span style="font-family:${WME_FONT};font-size:12px;color:${V.contentP3};line-height:18px;letter-spacing:0.2px;white-space:pre-line;">Notes:
+- ZIP code boundaries are rough approximations because ZIP codes are not actually areas. Prefer the "Get USPS routes" feature whenever possible.
+- Time zone boundaries are rough approximations, and may not display properly above zoom level 5.</span>
+    </div>`;
+
+    section.innerHTML = html;
+
+    sdk.Sidebar.registerScriptTab()
+      .then(({ tabLabel, tabPane }) => {
+        tabLabel.textContent = 'USGB';
+        tabLabel.title = 'US Government Boundaries';
+        tabPane.appendChild(section);
+
+        ['zips', 'counties', 'states', 'timeZones'].forEach((key) => {
+          attachLayerSettingsListeners(section, key);
+        });
+
+        const uspsRadiusInput = section.querySelector('#usgb-usps-radius');
+        if (uspsRadiusInput) {
+          uspsRadiusInput.addEventListener('change', () => {
+            _settings.uspsRoutes.radius = parseFloat(uspsRadiusInput.value);
+            saveSettings();
+          });
+        }
+
+        const uspsOpacityInput = section.querySelector('#usgb-usps-opacity');
+        if (uspsOpacityInput) {
+          uspsOpacityInput.addEventListener('input', () => {
+            const val = parseFloat(uspsOpacityInput.value);
+            _settings.uspsRoutes.opacity = val;
+            section.querySelector('#usgb-usps-opacity-val').textContent = val.toFixed(2);
+            sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: val });
+            saveSettings();
+          });
+        }
+
+        _$uspsResultsDiv = $(section.querySelector('#usgb-usps-route-results'));
+        _$getRoutesButton = $(section.querySelector('#usgb-get-usps-routes'));
+        _$getRoutesButton.click(onGetRoutesButtonClick)
+          .mouseenter(onGetRoutesButtonMouseEnter)
+          .mouseout(onGetRoutesButtonMouseLeave);
+        $(section.querySelector('#usgb-clear-usps-routes')).click(onClearRoutesButtonClick);
+
+        const resetBtn = section.querySelector('#usgb-reset-defaults');
+        if (resetBtn) {
+          resetBtn.addEventListener('click', () => {
+            const defaults = getDefaultSettings();
+            _settings = defaults;
+            saveSettings();
+
+            ['zips', 'counties', 'states', 'timeZones'].forEach((key) => {
+              const pfx = `usgb-${key}`;
+              const s = _settings.layers[key];
+
+              const dlCb = section.querySelector(`#${pfx}-dynamicLabels`);
+              if (dlCb) dlCb.checked = s.dynamicLabels;
+
+              const cc = section.querySelector(`#${pfx}-color`);
+              if (cc) cc.value = s.color;
+              const loc = section.querySelector(`#${pfx}-labelOutlineColor`);
+              if (loc) loc.value = s.labelOutlineColor;
+
+              const op = section.querySelector(`#${pfx}-opacity`);
+              if (op) {
+                op.value = s.opacity;
+                const opVal = section.querySelector(`#${pfx}-opacity-val`);
+                if (opVal) opVal.textContent = s.opacity;
+              }
+              sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[key], opacity: s.opacity });
+
+              const mz = section.querySelector(`#${pfx}-minZoom`);
+              if (mz && s.minZoom !== undefined) mz.value = s.minZoom;
+            });
+
+            const ur = section.querySelector('#usgb-usps-radius');
+            if (ur) ur.value = _settings.uspsRoutes.radius;
+            const uo = section.querySelector('#usgb-usps-opacity');
+            if (uo) {
+              uo.value = _settings.uspsRoutes.opacity;
+              const uoVal = section.querySelector('#usgb-usps-opacity-val');
+              if (uoVal) uoVal.textContent = _settings.uspsRoutes.opacity;
+            }
+            sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: _settings.uspsRoutes.opacity });
+
+            fetchBoundaries();
+          });
+        }
+      })
+      .catch((error) => {
+        logError(`Error creating script tab: ${error}`);
+      });
+  }
+
+  function init() {
+    loadSettings();
+    initLayers();
+    initTab();
+    showScriptInfoAlert();
+    fetchBoundaries();
+    log('Initialized.');
+  }
+
+  init();
+})();
