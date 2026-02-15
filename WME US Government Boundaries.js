@@ -84,6 +84,9 @@
   let _settings = {};
   let _fetchBoundariesTimeout;
   let _uspsRoutesActive = false;
+  let _cachedScreenPolygon = null;
+  let _cachedExtent = null;
+  let _cachedClipPolygon = null;
 
   function log(message) {
     console.log('USGB:', message);
@@ -163,6 +166,54 @@
       localStorage.setItem(SETTINGS_STORE_NAME, JSON.stringify(_settings));
       log('Settings saved');
     }
+  }
+
+  function ensurePolygonCaches() {
+    const ext = sdk.Map.getMapExtent();
+  
+    // Check if cache is valid
+    if (
+      _cachedExtent &&
+      _cachedScreenPolygon &&
+      _cachedClipPolygon &&
+      _cachedExtent[0] === ext[0] &&
+      _cachedExtent[1] === ext[1] &&
+      _cachedExtent[2] === ext[2] &&
+      _cachedExtent[3] === ext[3]
+    ) {
+      return; // Cache is valid
+    }
+  
+    // Cache miss - create both polygons
+    _cachedExtent = ext;
+    
+    // Create screen polygon
+    _cachedScreenPolygon = turf.polygon([
+      [
+        [ext[0], ext[3]],
+        [ext[2], ext[3]],
+        [ext[2], ext[1]],
+        [ext[0], ext[1]],
+        [ext[0], ext[3]],
+      ],
+    ]);
+  
+    // Create expanded clip polygon
+    const width = ext[2] - ext[0];
+    const height = ext[3] - ext[1];
+    const expandBy = 2;
+    const clipBox = [ext[0] - width * expandBy, ext[1] - height * expandBy, ext[2] + width * expandBy, ext[3] + height * expandBy];
+    _cachedClipPolygon = turf.bboxPolygon(clipBox);
+  }
+  
+  function getScreenPolygon() {
+    ensurePolygonCaches();
+    return _cachedScreenPolygon;
+  }
+  
+  function getClipPolygon() {
+    ensurePolygonCaches();
+    return _cachedClipPolygon;
   }
 
   function getUrl(baseUrl, extent, zoom, outFields, fParam = 'json') {
@@ -251,12 +302,7 @@
     const coordinates = boundary.geometry.rings;
     const externalPolygons = [];
 
-    const e = sdk.Map.getMapExtent();
-    const width = e[2] - e[0];
-    const height = e[3] - e[1];
-    const expandBy = 2;
-    const clipBox = [e[0] - width * expandBy, e[1] - height * expandBy, e[2] + width * expandBy, e[3] + height * expandBy];
-    const clipPolygon = turf.bboxPolygon(clipBox);
+    const clipPolygon = getClipPolygon();
 
     let mainOuterPolygon = turf.polygon([coordinates[0]], attributes);
     mainOuterPolygon.id = 0;
@@ -264,8 +310,16 @@
     for (let i = 1; i < coordinates.length; i++) {
       const testPolygon = turf.polygon([coordinates[i]]);
       if (turf.booleanContains(mainOuterPolygon, testPolygon)) {
-        mainOuterPolygon = turf.difference(turf.featureCollection([mainOuterPolygon, testPolygon]));
-        mainOuterPolygon.id = 0;
+        const differenceResult = turf.difference(turf.featureCollection([mainOuterPolygon, testPolygon]));
+        if (differenceResult) {
+          mainOuterPolygon = differenceResult;
+          mainOuterPolygon.id = 0;
+        } else {
+          // Difference resulted in null - the hole consumed the entire polygon
+          // Skip this polygon entirely by setting mainOuterPolygon to null
+          mainOuterPolygon = null;
+          break;
+        }
       } else {
         testPolygon.properties = attributes;
         externalPolygons.push(testPolygon);
@@ -273,7 +327,11 @@
     }
 
     const clippedPolygons = [];
-    [mainOuterPolygon, ...externalPolygons].forEach((polygon) => {
+    const polygonsToClip = mainOuterPolygon ? [mainOuterPolygon, ...externalPolygons] : externalPolygons;
+
+    polygonsToClip.forEach((polygon) => {
+      if (!polygon) return; // Skip null polygons
+
       const clippedFeature = turf.intersect(turf.featureCollection([polygon, clipPolygon]));
       if (clippedFeature) {
         switch (clippedFeature.geometry.type) {
@@ -288,6 +346,7 @@
         }
       }
     });
+
     clippedPolygons
       .filter((polygon) => polygon.geometry.coordinates.length)
       .forEach((polygon) => {
@@ -299,16 +358,7 @@
   }
 
   function getLabelPoints(feature) {
-    const e = sdk.Map.getMapExtent();
-    const screenPolygon = turf.polygon([
-      [
-        [e[0], e[3]],
-        [e[2], e[3]],
-        [e[2], e[1]],
-        [e[0], e[1]],
-        [e[0], e[3]],
-      ],
-    ]);
+    const screenPolygon = getScreenPolygon();
     const intersection = turf.intersect(turf.featureCollection([screenPolygon, feature]));
     const polygons = [];
     if (intersection) {
@@ -385,16 +435,7 @@
     if (context.cancel || !layerSettings.visible) {
       // do nothing
     } else {
-      const ext = sdk.Map.getMapExtent();
-      const screenPolygon = turf.polygon([
-        [
-          [ext[0], ext[3]],
-          [ext[2], ext[3]],
-          [ext[2], ext[1]],
-          [ext[0], ext[1]],
-          [ext[0], ext[3]],
-        ],
-      ]);
+      const screenPolygon = getScreenPolygon();
       const screenArea = turf.area(screenPolygon);
       sdk.Map.removeAllFeaturesFromLayer({ layerName });
 
