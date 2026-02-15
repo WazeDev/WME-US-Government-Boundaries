@@ -68,6 +68,7 @@
 
   const PROCESS_CONTEXTS = [];
   const ZIP_CITIES = {};
+  let _activeRequests = [];
   const sdk = await bootstrap({ scriptUpdateMonitor: { downloadUrl } });
   const ZIPS_LAYER_NAME = "US Gov't Boundaries - Zip Codes";
   const COUNTIES_LAYER_NAME = "US Gov't Boundaries - Counties";
@@ -85,6 +86,7 @@
   let _fetchBoundariesTimeout;
   let _uspsRoutesActive = false;
   let _cachedScreenPolygon = null;
+  let _cachedScreenArea = null;
   let _cachedExtent = null;
   let _cachedClipPolygon = null;
 
@@ -170,11 +172,12 @@
 
   function ensurePolygonCaches() {
     const ext = sdk.Map.getMapExtent();
-  
+
     // Check if cache is valid
     if (
       _cachedExtent &&
       _cachedScreenPolygon &&
+      _cachedScreenArea !== null &&
       _cachedClipPolygon &&
       _cachedExtent[0] === ext[0] &&
       _cachedExtent[1] === ext[1] &&
@@ -183,10 +186,10 @@
     ) {
       return; // Cache is valid
     }
-  
-    // Cache miss - create both polygons
+
+    // Cache miss - create both polygons and calculate screen area
     _cachedExtent = ext;
-    
+
     // Create screen polygon
     _cachedScreenPolygon = turf.polygon([
       [
@@ -197,7 +200,10 @@
         [ext[0], ext[3]],
       ],
     ]);
-  
+
+    // Calculate and cache screen area
+    _cachedScreenArea = turf.area(_cachedScreenPolygon);
+
     // Create expanded clip polygon
     const width = ext[2] - ext[0];
     const height = ext[3] - ext[1];
@@ -210,7 +216,12 @@
     ensurePolygonCaches();
     return _cachedScreenPolygon;
   }
-  
+
+  function getScreenArea() {
+    ensurePolygonCaches();
+    return _cachedScreenArea;
+  }
+
   function getClipPolygon() {
     ensurePolygonCaches();
     return _cachedClipPolygon;
@@ -261,6 +272,12 @@
       for (let i = 0; i < lastZipFeatures.length; i++) {
         const feature = lastZipFeatures[i];
 
+        // Quick bounding box check before expensive point-in-polygon
+        const bbox = turf.bbox(feature);
+        if (center.lon < bbox[0] || center.lon > bbox[2] || center.lat < bbox[1] || center.lat > bbox[3]) {
+          continue;
+        }
+
         if (turf.booleanPointInPolygon(mapCenter, feature)) {
           text = feature.properties.name.substr(1);
           $('<span>', { id: 'zip-text' })
@@ -290,6 +307,13 @@
     if (_settings.layers.counties.visible) {
       for (let i = 0; i < lastCountyFeatures.length; i++) {
         const feature = lastCountyFeatures[i];
+
+        // Quick bounding box check before expensive point-in-polygon
+        const bbox = turf.bbox(feature);
+        if (center.lon < bbox[0] || center.lon > bbox[2] || center.lat < bbox[1] || center.lat > bbox[3]) {
+          continue;
+        }
+
         if (turf.booleanPointInPolygon(mapCenter, feature)) {
           label = feature.properties.name;
           $('<span>', { id: 'county-text' }).css({ display: 'inline-block' }).text(label).appendTo($('#county-boundary'));
@@ -374,7 +398,7 @@
       }
     }
 
-    const screenArea = turf.area(screenPolygon);
+    const screenArea = getScreenArea();
     const points = polygons
       .filter((polygon) => {
         const polygonArea = turf.area(polygon);
@@ -435,8 +459,7 @@
     if (context.cancel || !layerSettings.visible) {
       // do nothing
     } else {
-      const screenPolygon = getScreenPolygon();
-      const screenArea = turf.area(screenPolygon);
+      const screenArea = getScreenArea();
       sdk.Map.removeAllFeaturesFromLayer({ layerName });
 
       // Collect all polygons and labels before adding to map
@@ -588,11 +611,20 @@
   }
 
   function fetchBoundaries() {
+    // Cancel any in-flight requests
     if (PROCESS_CONTEXTS.length > 0) {
       PROCESS_CONTEXTS.forEach((context) => {
         context.cancel = true;
       });
     }
+
+    // Abort active AJAX requests
+    _activeRequests.forEach((request) => {
+      if (request && request.abort) {
+        request.abort();
+      }
+    });
+    _activeRequests = [];
 
     const extent = sdk.Map.getMapExtent();
     const zoom = sdk.Map.getZoomLevel();
@@ -609,7 +641,7 @@
       if (zoom >= _settings.layers.zips.minZoom) {
         url = getUrl(ZIPS_LAYER_URL, extent, zoom, ['ZCTA5']);
         context.callCount++;
-        $.ajax({
+        const request = $.ajax({
           url,
           context,
           method: 'GET',
@@ -622,6 +654,7 @@
             }
           },
         });
+        _activeRequests.push(request);
       } else {
         processBoundaries([], context, 'zip', 'ZCTA5');
       }
@@ -630,7 +663,7 @@
       if (zoom >= _settings.layers.counties.minZoom) {
         url = getUrl(COUNTIES_LAYER_URL, extent, zoom, ['NAME']);
         context.callCount++;
-        $.ajax({
+        const request = $.ajax({
           url,
           context,
           method: 'GET',
@@ -643,6 +676,7 @@
             }
           },
         });
+        _activeRequests.push(request);
       } else {
         processBoundaries([], context, 'county', 'NAME');
       }
@@ -650,7 +684,7 @@
     if (_settings.layers.timeZones.visible) {
       url = getUrl(TIME_ZONES_LAYER_URL, extent, zoom, ['ZONE']);
       context.callCount++;
-      $.ajax({
+      const request = $.ajax({
         url,
         context,
         method: 'GET',
@@ -663,11 +697,12 @@
           }
         },
       });
+      _activeRequests.push(request);
     }
     if (_settings.layers.states.visible) {
       url = getUrl(STATES_LAYER_URL, extent, zoom, ['NAME']);
       context.callCount++;
-      $.ajax({
+      const request = $.ajax({
         url,
         context,
         method: 'GET',
@@ -680,6 +715,7 @@
           }
         },
       });
+      _activeRequests.push(request);
     }
   }
 
