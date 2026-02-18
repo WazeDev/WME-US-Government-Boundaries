@@ -881,9 +881,9 @@
       features.push(...lineStrings);
 
       _$uspsResultsDiv.append(
-        $('<div>', { class: 'route-item' })
-          .append($('<div>', { class: 'route-color' }).css({ background: color }))
-          .append($('<div>', { class: 'route-name' }).text(zipName)),
+        $('<div>', { class: 'usgb-route-item' })
+          .append($('<div>', { class: 'usgb-route-color' }).css({ background: color }))
+          .append($('<div>', { class: 'usgb-route-name' }).text(zipName)),
       );
       routeIdx++;
     });
@@ -908,7 +908,7 @@
 
     _$uspsResultsDiv.empty().append(`
       <div class="usgb-loading-wrapper">
-        <div class="loading-spinner"></div>
+        <div class="usgb-loading-spinner"></div>
         <div class="usgb-loading-text">Fetching USPS routes...</div>
       </div>
     `);
@@ -1672,7 +1672,7 @@
     const styleEl = document.createElement('style');
     styleEl.textContent = `
       /* Modern UI Styles for USGB */
-      .usgb-container {
+      .wme-usgb-panel .usgb-container {
         font-family: 'Rubik', -apple-system, BlinkMacSystemFont, sans-serif;
         color: var(--content_default);
         line-height: 1.6;
@@ -1681,7 +1681,7 @@
         box-sizing: border-box;
       }
 
-      .usgb-header {
+      .wme-usgb-panel .usgb-header {
         background: linear-gradient(135deg, var(--primary) 0%, #5b9ee8 100%);
         padding: 10px;
         border-radius: 12px 12px 0 0;
@@ -1690,7 +1690,7 @@
         overflow: hidden;
       }
 
-      .usgb-header::before {
+      .wme-usgb-panel .usgb-header::before {
         content: '';
         position: absolute;
         top: -50%;
@@ -1701,19 +1701,19 @@
         pointer-events: none;
       }
 
-      .usgb-header-content {
+      .wme-usgb-panel .usgb-header-content {
         position: relative;
         z-index: 1;
       }
 
-      .usgb-header-title {
+      .wme-usgb-panel .usgb-header-title {
         display: flex;
         align-items: center;
         gap: 10px;
         margin-bottom: 4px;
       }
 
-      .usgb-header-icon {
+      .wme-usgb-panel .usgb-header-icon {
         width: 32px;
         height: 32px;
         background: rgba(255, 255, 255, 0.2);
@@ -1726,7 +1726,7 @@
         font-size: 16px;
       }
 
-      .usgb-header h1 {
+      .wme-usgb-panel .usgb-header h1 {
         color: white;
         font-size: 18px;
         font-weight: 600;
@@ -1734,20 +1734,20 @@
         margin: 0;
       }
 
-      .usgb-header-subtitle {
+      .wme-usgb-panel .usgb-header-subtitle {
         color: rgba(255, 255, 255, 0.9);
         font-size: 12px;
         margin-left: 42px;
       }
 
-      .usgb-quick-presets {
+      .wme-usgb-panel .usgb-quick-presets {
         background: var(--surface_variant);
         padding: 12px;
         border-radius: 8px;
         margin-bottom: 12px;
       }
 
-      .usgb-presets-label {
+      .wme-usgb-panel .usgb-presets-label {
         font-size: 10px;
         font-weight: 600;
         text-transform: uppercase;
@@ -1757,13 +1757,13 @@
         display: block;
       }
 
-      .usgb-preset-chips {
+      .wme-usgb-panel .usgb-preset-chips {
         display: flex;
         gap: 6px;
         flex-wrap: wrap;
       }
 
-      .usgb-preset-chip {
+      .wme-usgb-panel .usgb-preset-chip {
         padding: 6px 12px;
         background: var(--background_default);
         border: 1px solid var(--hairline);
@@ -1776,14 +1776,14 @@
         white-space: nowrap;
       }
 
-      .usgb-preset-chip:hover {
+      .wme-usgb-panel .usgb-preset-chip:hover {
         background: var(--primary);
         color: white;
         border-color: var(--primary);
         transform: scale(1.05);
       }
 
-      .usgb-layer-card {
+      .wme-usgb-panel .usgb-layer-card {
         background: var(--surface_default);
         border-radius: 10px;
         margin-bottom: 10px;
@@ -1793,16 +1793,16 @@
         border: 1px solid transparent;
       }
 
-      .usgb-layer-card:hover {
+      .wme-usgb-panel .usgb-layer-card:hover {
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
         border-color: var(--separator);
       }
 
-      .usgb-layer-card.expanded {
+      .wme-usgb-panel .usgb-layer-card.expanded {
         box-shadow: 0 10px 15px rgba(0, 0, 0, 0.08);
       }
 
-      .usgb-layer-header {
+      .wme-usgb-panel .usgb-layer-header {
         padding: 12px 14px;
         display: flex;
         align-items: center;
@@ -1813,11 +1813,11 @@
         transition: background 150ms;
       }
 
-      .usgb-layer-header:hover {
+      .wme-usgb-panel .usgb-layer-header:hover {
         background: var(--surface_variant);
       }
 
-      .usgb-layer-header::before {
+      .wme-usgb-panel .usgb-layer-header::before {
         content: '';
         position: absolute;
         left: 0;
@@ -1828,14 +1828,14 @@
         transition: width 150ms;
       }
 
-      .usgb-layer-title-group {
+      .wme-usgb-panel .usgb-layer-title-group {
         display: flex;
         align-items: center;
         gap: 10px;
         flex: 1;
       }
 
-      .usgb-layer-icon {
+      .wme-usgb-panel .usgb-layer-icon {
         width: 32px;
         height: 32px;
         border-radius: 7px;
@@ -1848,7 +1848,7 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
       }
 
-      .usgb-layer-title {
+      .wme-usgb-panel .usgb-layer-title {
         font-size: 14px;
         font-weight: 600;
         color: var(--content_default);
@@ -1858,13 +1858,13 @@
         gap: 8px;
       }
 
-      .usgb-layer-controls-inline {
+      .wme-usgb-panel .usgb-layer-controls-inline {
         display: flex;
         align-items: center;
         gap: 10px;
       }
 
-      .usgb-visibility-toggle {
+      .wme-usgb-panel .usgb-visibility-toggle {
         position: relative;
         width: 40px;
         height: 22px;
@@ -1874,11 +1874,11 @@
         transition: background 250ms;
       }
 
-      .usgb-visibility-toggle.active {
+      .wme-usgb-panel .usgb-visibility-toggle.active {
         background: var(--primary);
       }
 
-      .usgb-visibility-toggle::after {
+      .wme-usgb-panel .usgb-visibility-toggle::after {
         content: '';
         position: absolute;
         top: 2px;
@@ -1891,46 +1891,46 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
       }
 
-      .usgb-visibility-toggle.active::after {
+      .wme-usgb-panel .usgb-visibility-toggle.active::after {
         transform: translateX(18px);
       }
 
-      .usgb-expand-icon {
+      .wme-usgb-panel .usgb-expand-icon {
         color: var(--content_p2);
         font-size: 16px;
         transition: transform 250ms;
       }
 
-      .usgb-layer-card.expanded .usgb-expand-icon {
+      .wme-usgb-panel .usgb-layer-card.expanded .usgb-expand-icon {
         transform: rotate(180deg);
       }
 
-      .usgb-layer-content {
+      .wme-usgb-panel .usgb-layer-content {
         max-height: 0;
         overflow: hidden;
         transition: max-height 350ms cubic-bezier(0.4, 0, 0.2, 1);
       }
 
-      .usgb-layer-card.expanded .usgb-layer-content {
+      .wme-usgb-panel .usgb-layer-card.expanded .usgb-layer-content {
         max-height: 600px;
       }
 
-      .usgb-layer-content-inner {
+      .wme-usgb-panel .usgb-layer-content-inner {
         padding: 0 14px 14px 14px;
       }
 
-      .usgb-settings-grid {
+      .wme-usgb-panel .usgb-settings-grid {
         display: grid;
         gap: 12px;
       }
 
-      .usgb-form-group {
+      .wme-usgb-panel .usgb-form-group {
         display: flex;
         flex-direction: column;
         gap: 6px;
       }
 
-      .usgb-form-label {
+      .wme-usgb-panel .usgb-form-label {
         font-size: 11px;
         font-weight: 600;
         color: var(--content_p1);
@@ -1941,7 +1941,7 @@
         gap: 5px;
       }
 
-      .usgb-tooltip-icon {
+      .wme-usgb-panel .usgb-tooltip-icon {
         width: 14px;
         height: 14px;
         background: var(--surface_variant);
@@ -1955,19 +1955,19 @@
         transition: all 150ms;
       }
 
-      .usgb-tooltip-icon:hover {
+      .wme-usgb-panel .usgb-tooltip-icon:hover {
         background: var(--primary);
         color: white;
         transform: scale(1.1);
       }
 
-      .usgb-color-group {
+      .wme-usgb-panel .usgb-color-group {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 10px;
       }
 
-      .usgb-color-picker-display {
+      .wme-usgb-panel .usgb-color-picker-display {
         width: 100%;
         height: 40px;
         border-radius: 7px;
@@ -1979,12 +1979,12 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
       }
 
-      .usgb-color-picker-display:hover {
+      .wme-usgb-panel .usgb-color-picker-display:hover {
         border-color: var(--primary);
         transform: scale(1.02);
       }
 
-      .usgb-color-picker-display::after {
+      .wme-usgb-panel .usgb-color-picker-display::after {
         content: attr(data-color);
         position: absolute;
         bottom: 3px;
@@ -1999,18 +1999,18 @@
         backdrop-filter: blur(4px);
       }
 
-      .usgb-slider-group {
+      .wme-usgb-panel .usgb-slider-group {
         display: flex;
         align-items: center;
         gap: 10px;
       }
 
-      .usgb-slider-wrapper {
+      .wme-usgb-panel .usgb-slider-wrapper {
         flex: 1;
         position: relative;
       }
 
-      .usgb-slider {
+      .wme-usgb-panel .usgb-slider {
         -webkit-appearance: none;
         appearance: none;
         width: 100%;
@@ -2021,14 +2021,14 @@
         cursor: pointer;
       }
 
-      .usgb-slider::-webkit-slider-runnable-track {
+      .wme-usgb-panel .usgb-slider::-webkit-slider-runnable-track {
         width: 100%;
         height: 5px;
         cursor: pointer;
         background: transparent;
       }
 
-      .usgb-slider::-moz-range-track {
+      .wme-usgb-panel .usgb-slider::-moz-range-track {
         width: 100%;
         height: 5px;
         cursor: pointer;
@@ -2036,7 +2036,7 @@
         border: none;
       }
 
-      .usgb-slider::-webkit-slider-thumb {
+      .wme-usgb-panel .usgb-slider::-webkit-slider-thumb {
         -webkit-appearance: none;
         appearance: none;
         width: 16px;
@@ -2049,11 +2049,11 @@
         margin-top: -5.5px;
       }
 
-      .usgb-slider::-webkit-slider-thumb:hover {
+      .wme-usgb-panel .usgb-slider::-webkit-slider-thumb:hover {
         transform: scale(1.2);
       }
 
-      .usgb-slider::-moz-range-thumb {
+      .wme-usgb-panel .usgb-slider::-moz-range-thumb {
         width: 16px;
         height: 16px;
         border-radius: 50%;
@@ -2064,7 +2064,7 @@
         transition: all 150ms;
       }
 
-      .usgb-slider-value {
+      .wme-usgb-panel .usgb-slider-value {
         min-width: 44px;
         height: 28px;
         background: var(--surface_variant);
@@ -2079,13 +2079,13 @@
         color: var(--content_default);
       }
 
-      .usgb-slider-presets {
+      .wme-usgb-panel .usgb-slider-presets {
         display: flex;
         gap: 4px;
         margin-top: 5px;
       }
 
-      .usgb-slider-preset {
+      .wme-usgb-panel .usgb-slider-preset {
         flex: 1;
         padding: 3px 6px;
         font-size: 10px;
@@ -2098,23 +2098,23 @@
         font-weight: 500;
       }
 
-      .usgb-slider-preset:hover {
+      .wme-usgb-panel .usgb-slider-preset:hover {
         background: var(--primary);
         color: white;
         border-color: var(--primary);
       }
 
-      .usgb-form-group:has(.usgb-input-number) {
+      .wme-usgb-panel .usgb-form-group:has(.usgb-input-number) {
         flex-direction: row;
         align-items: center;
         gap: 10px;
       }
 
-      .usgb-form-group:has(.usgb-input-number) .usgb-form-label {
+      .wme-usgb-panel .usgb-form-group:has(.usgb-input-number) .usgb-form-label {
         margin: 0;
       }
 
-      .usgb-input-number {
+      .wme-usgb-panel .usgb-input-number {
         width: 70px;
         height: 32px;
         padding: 0 8px;
@@ -2128,13 +2128,13 @@
         flex-shrink: 0;
       }
 
-      .usgb-input-number:focus {
+      .wme-usgb-panel .usgb-input-number:focus {
         outline: none;
         border-color: var(--primary);
         box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
       }
 
-      .usgb-checkbox-wrapper {
+      .wme-usgb-panel .usgb-checkbox-wrapper {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -2145,24 +2145,24 @@
         transition: all 150ms;
       }
 
-      .usgb-checkbox-wrapper:hover {
+      .wme-usgb-panel .usgb-checkbox-wrapper:hover {
         background: var(--surface_default);
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
       }
 
-      .usgb-checkbox-input {
+      .wme-usgb-panel .usgb-checkbox-input {
         position: relative;
         width: 18px;
         height: 18px;
         cursor: pointer;
       }
 
-      .usgb-checkbox-input input {
+      .wme-usgb-panel .usgb-checkbox-input input {
         opacity: 0;
         position: absolute;
       }
 
-      .usgb-checkbox-custom {
+      .wme-usgb-panel .usgb-checkbox-custom {
         width: 18px;
         height: 18px;
         border: 2px solid var(--hairline);
@@ -2174,12 +2174,12 @@
         transition: all 150ms;
       }
 
-      .usgb-checkbox-input input:checked + .usgb-checkbox-custom {
+      .wme-usgb-panel .usgb-checkbox-input input:checked + .usgb-checkbox-custom {
         background: var(--primary);
         border-color: var(--primary);
       }
 
-      .usgb-checkbox-custom i {
+      .wme-usgb-panel .usgb-checkbox-custom i {
         color: white;
         font-size: 11px;
         opacity: 0;
@@ -2187,18 +2187,18 @@
         transition: all 150ms;
       }
 
-      .usgb-checkbox-input input:checked + .usgb-checkbox-custom i {
+      .wme-usgb-panel .usgb-checkbox-input input:checked + .usgb-checkbox-custom i {
         opacity: 1;
         transform: scale(1);
       }
 
-      .usgb-checkbox-label {
+      .wme-usgb-panel .usgb-checkbox-label {
         font-size: 13px;
         color: var(--content_default);
         flex: 1;
       }
 
-      .usgb-btn {
+      .wme-usgb-panel .usgb-btn {
         height: 36px;
         padding: 0 16px;
         border: none;
@@ -2215,36 +2215,36 @@
         letter-spacing: 0.2px;
       }
 
-      .usgb-btn-primary {
+      .wme-usgb-panel .usgb-btn-primary {
         background: linear-gradient(135deg, var(--primary) 0%, #357abd 100%);
         color: white;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
       }
 
-      .usgb-btn-primary:hover {
+      .wme-usgb-panel .usgb-btn-primary:hover {
         transform: translateY(-1px);
         box-shadow: 0 10px 15px rgba(0, 0, 0, 0.08);
       }
 
-      .usgb-btn-primary:disabled {
+      .wme-usgb-panel .usgb-btn-primary:disabled {
         opacity: 0.5;
         cursor: not-allowed;
         transform: none !important;
       }
 
-      .usgb-btn-secondary {
+      .wme-usgb-panel .usgb-btn-secondary {
         background: var(--surface_default);
         color: var(--content_default);
         border: 2px solid var(--hairline);
       }
 
-      .usgb-btn-secondary:hover {
+      .wme-usgb-panel .usgb-btn-secondary:hover {
         border-color: var(--primary);
         color: var(--primary);
         transform: translateY(-1px);
       }
 
-      .usgb-usps-section {
+      .wme-usgb-panel .usgb-usps-section {
         background: var(--surface_default);
         border-radius: 10px;
         padding: 14px;
@@ -2252,7 +2252,7 @@
         margin-bottom: 10px;
       }
 
-      .usgb-usps-header {
+      .wme-usgb-panel .usgb-usps-header {
         display: flex;
         align-items: center;
         gap: 10px;
@@ -2261,7 +2261,7 @@
         border-bottom: 2px solid var(--separator);
       }
 
-      .usgb-usps-icon {
+      .wme-usgb-panel .usgb-usps-icon {
         width: 36px;
         height: 36px;
         background: linear-gradient(135deg, #ff6e40 0%, #ff8a65 100%);
@@ -2274,7 +2274,7 @@
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
       }
 
-      .usgb-usps-title {
+      .wme-usgb-panel .usgb-usps-title {
         font-size: 15px;
         font-weight: 600;
         color: var(--content_default);
@@ -2283,13 +2283,13 @@
         gap: 8px;
       }
 
-      .usgb-usps-actions {
+      .wme-usgb-panel .usgb-usps-actions {
         display: flex;
         gap: 8px;
         margin-top: 12px;
       }
 
-      .usgb-usps-results {
+      .wme-usgb-panel .usgb-usps-results {
         margin-top: 12px;
         padding: 12px;
         background: var(--surface_variant);
@@ -2301,19 +2301,19 @@
         justify-content: flex-start;
       }
 
-      .usgb-usps-results:empty {
+      .wme-usgb-panel .usgb-usps-results:empty {
         align-items: center;
         justify-content: center;
       }
 
-      .usgb-usps-results:empty::before {
+      .wme-usgb-panel .usgb-usps-results:empty::before {
         content: 'No routes loaded';
         color: var(--content_p3);
         font-size: 12px;
         font-style: italic;
       }
 
-      .usgb-loading-wrapper {
+      .wme-usgb-panel .usgb-loading-wrapper {
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -2322,13 +2322,13 @@
         padding: 20px;
       }
 
-      .usgb-loading-text {
+      .wme-usgb-panel .usgb-loading-text {
         font-size: 13px;
         color: var(--content_p2);
         font-weight: 500;
       }
 
-      .route-item {
+      .wme-usgb-panel .usgb-route-item {
         padding: 8px 12px;
         background: var(--surface_default);
         border-radius: 5px;
@@ -2337,14 +2337,14 @@
         align-items: center;
         gap: 8px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-        animation: slideIn 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        animation: usgb-slideIn 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
       }
 
-      .route-item:last-child {
+      .wme-usgb-panel .usgb-route-item:last-child {
         margin-bottom: 0;
       }
 
-      @keyframes slideIn {
+      @keyframes usgb-slideIn {
         from {
           opacity: 0;
           transform: translateX(-20px);
@@ -2355,55 +2355,55 @@
         }
       }
 
-      .route-color {
+      .wme-usgb-panel .usgb-route-color {
         width: 10px;
         height: 10px;
         border-radius: 3px;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
       }
 
-      .route-name {
+      .wme-usgb-panel .usgb-route-name {
         flex: 1;
         font-size: 13px;
         font-weight: 600;
         color: var(--content_default);
       }
 
-      .loading-spinner {
+      .wme-usgb-panel .usgb-loading-spinner {
         width: 36px;
         height: 36px;
         border: 3px solid var(--separator);
         border-top-color: var(--primary);
         border-radius: 50%;
-        animation: spin 0.8s linear infinite;
+        animation: usgb-spin 0.8s linear infinite;
       }
 
-      @keyframes spin {
+      @keyframes usgb-spin {
         to { transform: rotate(360deg); }
       }
 
-      .usgb-footer-actions {
+      .wme-usgb-panel .usgb-footer-actions {
         margin-top: 12px;
         display: flex;
         justify-content: center;
       }
 
-      .usgb-layer-card[data-layer="states"] {
+      .wme-usgb-panel .usgb-layer-card[data-layer="states"] {
         --accent-color: #536dfe;
         --accent-color-light: #7c8ff9;
       }
 
-      .usgb-layer-card[data-layer="counties"] {
+      .wme-usgb-panel .usgb-layer-card[data-layer="counties"] {
         --accent-color: #ff8a80;
         --accent-color-light: #ffab91;
       }
 
-      .usgb-layer-card[data-layer="zips"] {
+      .wme-usgb-panel .usgb-layer-card[data-layer="zips"] {
         --accent-color: #ff5252;
         --accent-color-light: #ff6e76;
       }
 
-      .usgb-layer-card[data-layer="timeZones"] {
+      .wme-usgb-panel .usgb-layer-card[data-layer="timeZones"] {
         --accent-color: #ff6e40;
         --accent-color-light: #ff8a65;
       }
@@ -2910,6 +2910,7 @@
         tabLabel.textContent = 'USGB';
         tabLabel.title = 'US Government Boundaries - Modern UI';
         tabPane.setAttribute('data-usgb-tab', 'true');
+        tabPane.classList.add('wme-usgb-panel');
         tabPane.appendChild(buildMainUI());
       })
       .catch((error) => {
