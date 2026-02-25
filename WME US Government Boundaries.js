@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2026.02.19.00
+// @version         2026.02.25.00
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
-// @author          MapOMatic
+// @author          MapOMatic / JS55CT
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
 // @require         https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js
 // @require         https://greasyfork.org/scripts/24851-wazewrap/code/WazeWrap.js
@@ -111,7 +111,7 @@
 (async function main() {
   'use strict';
 
-  const UPDATE_MESSAGE = 'Modern UI redesign with enhanced controls, keyboard shortcuts, and improved user experience!';
+  const UPDATE_MESSAGE = 'Small Fix for USPS Route Fetching';
   const downloadUrl = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
 
   const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
@@ -180,6 +180,7 @@
   let _settings = {};
   let _fetchBoundariesTimeout;
   let _uspsRoutesActive = false;
+  let _uspsRoutesFetching = false;
   let _cachedScreenPolygon = null;
   let _cachedScreenArea = null;
   let _cachedExtent = null;
@@ -883,7 +884,9 @@
       _$uspsResultsDiv.append(
         $('<div>', { class: 'usgb-route-item' })
           .append($('<div>', { class: 'usgb-route-color' }).css({ background: color }))
-          .append($('<div>', { class: 'usgb-route-name' }).text(zipName)),
+          .append($('<div>', { class: 'usgb-route-name' }).append(
+            $('<a>', { href: `https://tools.usps.com/zip-code-lookup.htm?citybyzipcode&mode=byZip&zip=${zipName.slice(-5)}`, target: '__blank', title: 'Look up USPS zip code' }).text(zipName),
+          )),
       );
       routeIdx++;
     });
@@ -899,9 +902,12 @@
    * @fires GM_xmlhttpRequest - Cross-domain AJAX to USPS EDDM service
    */
   function fetchUspsRoutesFeatures() {
+    if (_uspsRoutesFetching) return;
+
     const centerLonLat = sdk.Map.getMapCenter();
     const url = getUspsRoutesUrl(centerLonLat.lon, centerLonLat.lat, _settings.uspsRoutes.radius);
 
+    _uspsRoutesFetching = true;
     _$getRoutesButton.attr('disabled', 'true').css({ opacity: '0.5' });
     const originalButtonHTML = _$getRoutesButton.html();
     _$getRoutesButton.html('<i class="fas fa-spinner fa-spin"></i> Loading...');
@@ -919,10 +925,12 @@
     GM_xmlhttpRequest({
       url,
       onload: (res) => {
+        _uspsRoutesFetching = false;
         _$getRoutesButton.html(originalButtonHTML);
         processUspsRoutesResponse(res);
       },
       onerror: () => {
+        _uspsRoutesFetching = false;
         _$getRoutesButton.removeAttr('disabled').css({ opacity: '' }).html(originalButtonHTML);
         _$uspsResultsDiv.empty();
       },
