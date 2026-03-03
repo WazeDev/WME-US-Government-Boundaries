@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2026.02.25.00
+// @version         2026.03.03.00
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic / JS55CT
 // @include         /^https:\/\/(www|beta)\.waze\.com\/(?!user\/)(.{2,6}\/)?editor\/?.*$/
@@ -111,7 +111,7 @@
 (async function main() {
   'use strict';
 
-  const UPDATE_MESSAGE = 'Small Fix for USPS Route Fetching';
+  const UPDATE_MESSAGE = 'Small Fix to make Label Outline Width dynamic to zoom level';
   const downloadUrl = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
 
   const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
@@ -236,7 +236,7 @@
       lastVersion: GM_info.script.version,
       layers: {
         zips: {
-          visible: true,
+          visible: false,
           dynamicLabels: true,
           color: '#ff0000',
           labelOutlineColor: '#ffffff',
@@ -244,7 +244,7 @@
           minZoom: 12,
         },
         counties: {
-          visible: true,
+          visible: false,
           dynamicLabels: true,
           color: '#ffc0cb',
           labelOutlineColor: '#000000',
@@ -252,14 +252,14 @@
           minZoom: 8,
         },
         states: {
-          visible: true,
+          visible: false,
           dynamicLabels: true,
           color: '#0000ff',
           labelOutlineColor: '#add8e6',
           opacity: 0.6,
         },
         timeZones: {
-          visible: true,
+          visible: false,
           dynamicLabels: true,
           color: '#ff8855',
           labelOutlineColor: '#883311',
@@ -1232,6 +1232,7 @@
         getStrokeColor: () => _settings.layers.counties.color,
         getFontColor: () => _settings.layers.counties.color,
         getLabelOutlineColor: () => _settings.layers.counties.labelOutlineColor,
+        getLabelOutlineWidth: ({ zoomLevel }) => Math.max(1, Math.round((zoomLevel + 2) / 8)),
       },
       styleRules: [
         {
@@ -1248,7 +1249,7 @@
             fontWeight: 'bold',
             fontColor: '${getFontColor}',
             labelOutlineColor: '${getLabelOutlineColor}',
-            labelOutlineWidth: 2,
+            labelOutlineWidth: '${getLabelOutlineWidth}',
           },
         },
       ],
@@ -1281,6 +1282,7 @@
         getStrokeColor: () => _settings.layers.states.color,
         getFontColor: () => _settings.layers.states.color,
         getLabelOutlineColor: () => _settings.layers.states.labelOutlineColor,
+        getLabelOutlineWidth: ({ zoomLevel }) => Math.max(1, Math.round((zoomLevel + 2) / 8)),
       },
       styleRules: [
         {
@@ -1294,7 +1296,7 @@
             label: '${getLabel}',
             labelYOffset: '${getLabelYOffset}',
             labelOutlineColor: '${getLabelOutlineColor}',
-            labelOutlineWidth: 2,
+            labelOutlineWidth: '${getLabelOutlineWidth}',
           },
         },
         {
@@ -1327,6 +1329,7 @@
         getStrokeColor: () => _settings.layers.zips.color,
         getFontColor: () => _settings.layers.zips.color,
         getLabelOutlineColor: () => _settings.layers.zips.labelOutlineColor,
+        getLabelOutlineWidth: ({ zoomLevel }) => Math.max(1, Math.round((zoomLevel + 2) / 8)),
       },
       styleRules: [
         {
@@ -1344,7 +1347,7 @@
             label: '${getLabel}',
             labelYOffset: -20,
             labelOutlineColor: '${getLabelOutlineColor}',
-            labelOutlineWidth: 2,
+            labelOutlineWidth: '${getLabelOutlineWidth}',
           },
         },
       ],
@@ -1366,6 +1369,7 @@
         getStrokeColor: () => _settings.layers.timeZones.color,
         getFontColor: () => _settings.layers.timeZones.color,
         getLabelOutlineColor: () => _settings.layers.timeZones.labelOutlineColor,
+        getLabelOutlineWidth: ({ zoomLevel }) => Math.max(1, Math.round((zoomLevel + 2) / 8)),
       },
       styleRules: [
         {
@@ -1383,7 +1387,7 @@
             label: '${getLabel}',
             labelYOffset: -40,
             labelOutlineColor: '${getLabelOutlineColor}',
-            labelOutlineWidth: 2,
+            labelOutlineWidth: '${getLabelOutlineWidth}',
           },
         },
       ],
