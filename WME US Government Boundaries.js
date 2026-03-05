@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2026.03.03.1
+// @version         2026.03.05.0
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic / JS55CT
 // @match         *://*.waze.com/*editor*
@@ -113,7 +113,7 @@
 (async function main() {
   'use strict';
 
-  const UPDATE_MESSAGE = 'Small Fix to make Label Outline Width dynamic to zoom level';
+  const UPDATE_MESSAGE = 'Small Fix: Move USPS Routes section to the top in the Sidebar.';
   const downloadUrl = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
 
   const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
@@ -2787,12 +2787,6 @@
     });
     container.appendChild(presetsDiv);
 
-    // Layer Cards
-    container.appendChild(buildLayerCard('states', 'States', 'fas fa-flag-usa', { showDynamicLabels: false }));
-    container.appendChild(buildLayerCard('counties', 'Counties', 'fas fa-map', { showMinZoom: true }));
-    container.appendChild(buildLayerCard('zips', 'ZIP Codes', 'fas fa-hashtag', { showMinZoom: true }));
-    container.appendChild(buildLayerCard('timeZones', 'Time Zones', 'fas fa-clock'));
-
     // USPS Routes Section
     const uspsSection = document.createElement('div');
     uspsSection.className = 'usgb-usps-section';
@@ -2840,6 +2834,14 @@
       <div class="usgb-usps-results" id="usgb-usps-results"></div>
     `;
     container.appendChild(uspsSection);
+
+    // Layer Cards
+    container.appendChild(buildLayerCard('states', 'States', 'fas fa-flag-usa', { showDynamicLabels: false }));
+    container.appendChild(buildLayerCard('counties', 'Counties', 'fas fa-map', { showMinZoom: true }));
+    container.appendChild(buildLayerCard('zips', 'ZIP Codes', 'fas fa-hashtag', { showMinZoom: true }));
+    container.appendChild(buildLayerCard('timeZones', 'Time Zones', 'fas fa-clock'));
+
+
 
     // Wire up USPS controls
     const radiusInput = uspsSection.querySelector('#usgb-usps-radius');
