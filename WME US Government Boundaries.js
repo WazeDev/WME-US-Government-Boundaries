@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            WME US Government Boundaries
 // @namespace       https://greasyfork.org/users/45389
-// @version         2026.03.05.0
+// @version         2026.10.25.0
 // @description     Adds a layer to display US (federal, state, and/or local) boundaries.
 // @author          MapOMatic / JS55CT
 // @match         *://*.waze.com/*editor*
@@ -113,7 +113,7 @@
 (async function main() {
   'use strict';
 
-  const UPDATE_MESSAGE = 'Small Fix: Move USPS Routes section to the top in the Sidebar.';
+  const UPDATE_MESSAGE = 'Updated to the WME SDK async mode (no visible change to layers or settings).';
   const downloadUrl = 'https://greasyfork.org/scripts/25631-wme-us-government-boundaries/code/WME%20US%20Government%20Boundaries.user.js';
 
   const SETTINGS_STORE_NAME = 'wme_us_government_boundaries';
@@ -166,7 +166,7 @@
   const PROCESS_CONTEXTS = [];
   const ZIP_CITIES = {};
   let _activeRequests = [];
-  const sdk = await bootstrap({ scriptUpdateMonitor: { downloadUrl } });
+  const sdk = await bootstrap({ scriptUpdateMonitor: { downloadUrl }, mode: 'async' });
   const ZIPS_LAYER_NAME = "US Gov't Boundaries - Zip Codes";
   const COUNTIES_LAYER_NAME = "US Gov't Boundaries - Counties";
   const STATES_LAYER_NAME = "US Gov't Boundaries - States";
@@ -340,8 +340,8 @@
    *
    * @performance Critical optimization - prevents ~36,000 redundant calculations per hour
    */
-  function ensurePolygonCaches() {
-    const ext = sdk.Map.getMapExtent();
+  async function ensurePolygonCaches() {
+    const ext = await sdk.Map.getMapExtent();
 
     if (
       _cachedExtent &&
@@ -383,8 +383,8 @@
    *
    * @returns {Object} Turf.js polygon feature
    */
-  function getScreenPolygon() {
-    ensurePolygonCaches();
+  async function getScreenPolygon() {
+    await ensurePolygonCaches();
     return _cachedScreenPolygon;
   }
 
@@ -395,8 +395,8 @@
    *
    * @returns {number} Area in square meters
    */
-  function getScreenArea() {
-    ensurePolygonCaches();
+  async function getScreenArea() {
+    await ensurePolygonCaches();
     return _cachedScreenArea;
   }
 
@@ -408,8 +408,8 @@
    *
    * @returns {Object} Turf.js polygon feature (expanded bounding box)
    */
-  function getClipPolygon() {
-    ensurePolygonCaches();
+  async function getClipPolygon() {
+    await ensurePolygonCaches();
     return _cachedClipPolygon;
   }
 
@@ -480,8 +480,8 @@
    * @param {Object} context - Processing context to check cancellation
    * @param {boolean} context.cancel - If true, display update is skipped
    */
-  function updateNameDisplay(context) {
-    const center = sdk.Map.getMapCenter();
+  async function updateNameDisplay(context) {
+    const center = await sdk.Map.getMapCenter();
     const mapCenter = turf.point([center.lon, center.lat]);
     let text = '';
     let label;
@@ -559,11 +559,11 @@
    * @param {Object} attributes - Properties to attach to resulting Turf.js features
    * @returns {Object[]} Array of Turf.js polygon features, clipped and ready for rendering
    */
-  function extractPolygonsWithExternalRings(boundary, attributes) {
+  async function extractPolygonsWithExternalRings(boundary, attributes) {
     const coordinates = boundary.geometry.rings;
     const externalPolygons = [];
 
-    const clipPolygon = getClipPolygon();
+    const clipPolygon = await getClipPolygon();
 
     let mainOuterPolygon = turf.polygon([coordinates[0]], attributes);
     mainOuterPolygon.id = 0;
@@ -636,8 +636,8 @@
    * @param {Object} feature.properties - Must contain name property for the label
    * @returns {Object[]} Array of Turf.js point features for label rendering
    */
-  function getLabelPoints(feature) {
-    const screenPolygon = getScreenPolygon();
+  async function getLabelPoints(feature) {
+    const screenPolygon = await getScreenPolygon();
     const intersection = turf.intersect(turf.featureCollection([screenPolygon, feature]));
     const polygons = [];
     if (intersection) {
@@ -653,7 +653,7 @@
       }
     }
 
-    const screenArea = getScreenArea();
+    const screenArea = await getScreenArea();
     const points = polygons
       .filter((polygon) => {
         const polygonArea = turf.area(polygon);
@@ -691,7 +691,7 @@
    * @param {string} type - Boundary type: 'zip', 'county', 'state', or 'timeZone'
    * @param {string} nameField - ArcGIS attribute field name containing the boundary name
    */
-  function processBoundaries(boundaries, context, type, nameField) {
+  async function processBoundaries(boundaries, context, type, nameField) {
     let layerName;
     let layerSettings;
 
@@ -729,15 +729,15 @@
     if (context.cancel || !layerSettings.visible) {
       // do nothing
     } else {
-      const screenArea = getScreenArea();
-      sdk.Map.removeAllFeaturesFromLayer({ layerName });
+      const screenArea = await getScreenArea();
+      await sdk.Map.removeAllFeaturesFromLayer({ layerName });
 
       const allPolygons = [];
       const allLabels = [];
 
       if (!context.cancel) {
-        boundaries.forEach((boundary) => {
-          if (context.cancel) return;
+        for (const boundary of boundaries) {
+          if (context.cancel) continue;
 
           const attributes = {
             name: boundary.attributes[nameField],
@@ -745,7 +745,7 @@
             type,
           };
 
-          const features = extractPolygonsWithExternalRings(boundary, attributes);
+          const features = await extractPolygonsWithExternalRings(boundary, attributes);
           if (features.length) {
             if (type === 'zip' || type === 'county') {
               allFeatures.push(...features);
@@ -765,19 +765,19 @@
             allPolygons.push(...features);
 
             if (layerSettings.dynamicLabels) {
-              features.forEach((feature) => {
-                const labels = getLabelPoints(feature);
+              for (const feature of features) {
+                const labels = await getLabelPoints(feature);
                 if (labels?.length) {
                   allLabels.push(...labels);
                 }
-              });
+              }
             }
           }
-        });
+        }
 
         if (allPolygons.length && !context.cancel) {
           try {
-            sdk.Map.addFeaturesToLayer({ layerName, features: allPolygons });
+            await sdk.Map.addFeaturesToLayer({ layerName, features: allPolygons });
           } catch (ex) {
             logError('FAIL adding polygons: ', ex);
           }
@@ -785,7 +785,7 @@
 
         if (allLabels.length && !context.cancel) {
           try {
-            sdk.Map.addFeaturesToLayer({ layerName, features: allLabels });
+            await sdk.Map.addFeaturesToLayer({ layerName, features: allLabels });
           } catch (ex) {
             logError('FAIL adding labels: ', ex);
           }
@@ -801,7 +801,7 @@
 
     context.callCount--;
     if (context.callCount === 0) {
-      updateNameDisplay(context);
+      await updateNameDisplay(context);
       const idx = PROCESS_CONTEXTS.indexOf(context);
       if (idx > -1) {
         PROCESS_CONTEXTS.splice(idx, 1);
@@ -829,8 +829,8 @@
    *
    * @returns {Object} Turf.js polygon feature (72-sided circle approximation)
    */
-  function getUspsCircleFeature() {
-    let center = sdk.Map.getMapCenter();
+  async function getUspsCircleFeature() {
+    let center = await sdk.Map.getMapCenter();
     center = [center.lon, center.lat];
     const radius = _settings.uspsRoutes.radius;
     const options = { steps: 72, units: 'miles', properties: { type: 'circle' } };
@@ -852,7 +852,7 @@
    * @param {Object} res - GM_xmlhttpRequest response object
    * @param {string} res.responseText - JSON string from USPS API
    */
-  function processUspsRoutesResponse(res) {
+  async function processUspsRoutesResponse(res) {
     const data = $.parseJSON(res.responseText);
     const routes = data.results[0].value.features;
 
@@ -893,7 +893,7 @@
       routeIdx++;
     });
     _$getRoutesButton.removeAttr('disabled').css({ opacity: '' });
-    sdk.Map.addFeaturesToLayer({ layerName: USPS_ROUTES_LAYER_NAME, features });
+    await sdk.Map.addFeaturesToLayer({ layerName: USPS_ROUTES_LAYER_NAME, features });
   }
 
   /**
@@ -903,13 +903,13 @@
    *
    * @fires GM_xmlhttpRequest - Cross-domain AJAX to USPS EDDM service
    */
-  function fetchUspsRoutesFeatures() {
+  async function fetchUspsRoutesFeatures() {
     if (_uspsRoutesFetching) return;
+    _uspsRoutesFetching = true;
 
-    const centerLonLat = sdk.Map.getMapCenter();
+    const centerLonLat = await sdk.Map.getMapCenter();
     const url = getUspsRoutesUrl(centerLonLat.lon, centerLonLat.lat, _settings.uspsRoutes.radius);
 
-    _uspsRoutesFetching = true;
     _$getRoutesButton.attr('disabled', 'true').css({ opacity: '0.5' });
     const originalButtonHTML = _$getRoutesButton.html();
     _$getRoutesButton.html('<i class="fas fa-spinner fa-spin"></i> Loading...');
@@ -921,15 +921,15 @@
       </div>
     `);
 
-    sdk.Map.removeAllFeaturesFromLayer({ layerName: USPS_ROUTES_LAYER_NAME });
+    await sdk.Map.removeAllFeaturesFromLayer({ layerName: USPS_ROUTES_LAYER_NAME });
     _uspsRoutesActive = true;
-    ensureUspsRoutesZIndex();
+    await ensureUspsRoutesZIndex();
     GM_xmlhttpRequest({
       url,
-      onload: (res) => {
+      onload: async (res) => {
         _uspsRoutesFetching = false;
         _$getRoutesButton.html(originalButtonHTML);
-        processUspsRoutesResponse(res);
+        await processUspsRoutesResponse(res);
       },
       onerror: () => {
         _uspsRoutesFetching = false;
@@ -958,7 +958,10 @@
    *
    * @performance Debounced by debouncedFetchBoundaries() to prevent excessive API calls during map panning
    */
-  function fetchBoundaries() {
+  async function fetchBoundaries() {
+    const extent = await sdk.Map.getMapExtent();
+    const zoom = await sdk.Map.getZoomLevel();
+
     if (PROCESS_CONTEXTS.length > 0) {
       PROCESS_CONTEXTS.forEach((context) => {
         context.cancel = true;
@@ -972,8 +975,6 @@
     });
     _activeRequests = [];
 
-    const extent = sdk.Map.getMapExtent();
-    const zoom = sdk.Map.getZoomLevel();
     let url;
     const context = { callCount: 0, cancel: false };
     PROCESS_CONTEXTS.push(context);
@@ -992,17 +993,17 @@
           context,
           method: 'GET',
           datatype: 'json',
-          success(data) {
+          async success(data) {
             if (data.error) {
               logError(`ZIP codes layer: ${data.error.message}`);
             } else {
-              processBoundaries(data.features, this, 'zip', 'ZCTA5');
+              await processBoundaries(data.features, this, 'zip', 'ZCTA5');
             }
           },
         });
         _activeRequests.push(request);
       } else {
-        processBoundaries([], context, 'zip', 'ZCTA5');
+        await processBoundaries([], context, 'zip', 'ZCTA5');
       }
     }
     if (_settings.layers.counties.visible) {
@@ -1014,17 +1015,17 @@
           context,
           method: 'GET',
           datatype: 'json',
-          success(data) {
+          async success(data) {
             if (data.error) {
               logError(`counties layer: ${data.error.message}`);
             } else {
-              processBoundaries(data.features, this, 'county', 'NAME');
+              await processBoundaries(data.features, this, 'county', 'NAME');
             }
           },
         });
         _activeRequests.push(request);
       } else {
-        processBoundaries([], context, 'county', 'NAME');
+        await processBoundaries([], context, 'county', 'NAME');
       }
     }
     if (_settings.layers.timeZones.visible) {
@@ -1035,11 +1036,11 @@
         context,
         method: 'GET',
         datatype: 'json',
-        success(data) {
+        async success(data) {
           if (data.error) {
             logError(`timezones layer: ${data.error.message}`);
           } else {
-            processBoundaries(data.features, this, 'timeZone', 'ZONE');
+            await processBoundaries(data.features, this, 'timeZone', 'ZONE');
           }
         },
       });
@@ -1053,11 +1054,11 @@
         context,
         method: 'GET',
         datatype: 'json',
-        success(data) {
+        async success(data) {
           if (data.error) {
             logError(`states layer: ${data.error.message}`);
           } else {
-            processBoundaries(data.features, this, 'state', 'NAME');
+            await processBoundaries(data.features, this, 'state', 'NAME');
           }
         },
       });
@@ -1074,7 +1075,7 @@
    * @param {boolean} args.checked - New checked state
    * @fires fetchBoundaries - Triggers boundary re-fetch with new visibility settings
    */
-  function onLayerCheckboxToggled(args) {
+  async function onLayerCheckboxToggled(args) {
     let layerName;
     let settingsObj;
     let layerKey;
@@ -1105,7 +1106,7 @@
     const visibility = args.checked;
     settingsObj.visible = visibility;
     saveSettings();
-    sdk.Map.setLayerVisibility({ layerName, visibility });
+    await sdk.Map.setLayerVisibility({ layerName, visibility });
 
     // Sync with modern UI visibility toggle
     const layerCard = document.querySelector(`.usgb-layer-card[data-layer="${layerKey}"]`);
@@ -1120,41 +1121,41 @@
       }
     }
 
-    fetchBoundaries();
+    await fetchBoundaries();
   }
 
   /**
    * Click handler for the "Get Routes" button.
    * Initiates USPS routes search at the current map center.
    */
-  function onGetRoutesButtonClick() {
-    fetchUspsRoutesFeatures();
+  async function onGetRoutesButtonClick() {
+    await fetchUspsRoutesFeatures();
   }
 
   /**
    * Mouse enter handler for the "Get Routes" button.
    * Displays a preview circle on the map showing the search radius.
    */
-  function onGetRoutesButtonMouseEnter() {
-    const feature = getUspsCircleFeature();
+  async function onGetRoutesButtonMouseEnter() {
+    const feature = await getUspsCircleFeature();
     feature.id = 'uspsCircle';
-    sdk.Map.addFeatureToLayer({ layerName: USPS_ROUTES_LAYER_NAME, feature });
+    await sdk.Map.addFeatureToLayer({ layerName: USPS_ROUTES_LAYER_NAME, feature });
   }
 
   /**
    * Mouse leave handler for the "Get Routes" button.
    * Removes the preview circle from the map.
    */
-  function onGetRoutesButtonMouseLeave() {
-    sdk.Map.removeFeatureFromLayer({ layerName: USPS_ROUTES_LAYER_NAME, featureId: 'uspsCircle' });
+  async function onGetRoutesButtonMouseLeave() {
+    await sdk.Map.removeFeatureFromLayer({ layerName: USPS_ROUTES_LAYER_NAME, featureId: 'uspsCircle' });
   }
 
   /**
    * Click handler for the "Clear Routes" button.
    * Removes all USPS route features from the map and clears the routes legend.
    */
-  function onClearRoutesButtonClick() {
-    sdk.Map.removeAllFeaturesFromLayer({ layerName: USPS_ROUTES_LAYER_NAME });
+  async function onClearRoutesButtonClick() {
+    await sdk.Map.removeAllFeaturesFromLayer({ layerName: USPS_ROUTES_LAYER_NAME });
     _$uspsResultsDiv.empty();
     _uspsRoutesActive = false;
   }
@@ -1168,8 +1169,8 @@
    */
   function debouncedFetchBoundaries(delay = 250) {
     clearTimeout(_fetchBoundariesTimeout);
-    _fetchBoundariesTimeout = setTimeout(() => {
-      fetchBoundaries();
+    _fetchBoundariesTimeout = setTimeout(async () => {
+      await fetchBoundaries();
     }, delay);
   }
 
@@ -1180,14 +1181,14 @@
    *
    * @performance Event-based z-index management (replaces previous setInterval polling)
    */
-  const ensureUspsRoutesZIndex = () => {
+  const ensureUspsRoutesZIndex = async () => {
     if (!_uspsRoutesActive) return;
 
-    const roadsZIndex = sdk.Map.getLayerZIndex({ layerName: 'roads' });
+    const roadsZIndex = await sdk.Map.getLayerZIndex({ layerName: 'roads' });
     const targetZIndex = roadsZIndex - 2;
-    const currentZIndex = sdk.Map.getLayerZIndex({ layerName: USPS_ROUTES_LAYER_NAME });
+    const currentZIndex = await sdk.Map.getLayerZIndex({ layerName: USPS_ROUTES_LAYER_NAME });
     if (currentZIndex !== targetZIndex) {
-      sdk.Map.setLayerZIndex({ layerName: USPS_ROUTES_LAYER_NAME, zIndex: targetZIndex });
+      await sdk.Map.setLayerZIndex({ layerName: USPS_ROUTES_LAYER_NAME, zIndex: targetZIndex });
     }
   };
 
@@ -1220,8 +1221,8 @@
    *
    * @see sdk.Map.addLayer
    */
-  function initCountiesLayer() {
-    sdk.Map.addLayer({
+  async function initCountiesLayer() {
+    await sdk.Map.addLayer({
       layerName: COUNTIES_LAYER_NAME,
       styleContext: {
         getLabel: ({ feature, zoomLevel }) => {
@@ -1265,8 +1266,8 @@
    *
    * @see sdk.Map.addLayer
    */
-  function initStatesLayer() {
-    sdk.Map.addLayer({
+  async function initStatesLayer() {
+    await sdk.Map.addLayer({
       layerName: STATES_LAYER_NAME,
       styleContext: {
         getStrokeWidth: ({ zoomLevel }) => Math.round(1 + (zoomLevel - 4) * 0.29),
@@ -1321,8 +1322,8 @@
    *
    * @see sdk.Map.addLayer
    */
-  function initZipsLayer() {
-    sdk.Map.addLayer({
+  async function initZipsLayer() {
+    await sdk.Map.addLayer({
       layerName: ZIPS_LAYER_NAME,
       styleContext: {
         getLabel: ({ feature }) => feature?.properties?.label ?? '',
@@ -1363,8 +1364,8 @@
    *
    * @see sdk.Map.addLayer
    */
-  function initTimeZonesLayer() {
-    sdk.Map.addLayer({
+  async function initTimeZonesLayer() {
+    await sdk.Map.addLayer({
       layerName: TIME_ZONES_LAYER_NAME,
       styleContext: {
         getLabel: (context) => context.feature.properties.label,
@@ -1410,17 +1411,17 @@
    *
    * @see initZipsLayer, initCountiesLayer, initStatesLayer, initTimeZonesLayer
    */
-  function initLayers() {
-    initZipsLayer();
-    initCountiesLayer();
-    initStatesLayer();
-    initTimeZonesLayer();
+  async function initLayers() {
+    await initZipsLayer();
+    await initCountiesLayer();
+    await initStatesLayer();
+    await initTimeZonesLayer();
 
-    sdk.Map.addLayer({
+    await sdk.Map.addLayer({
       layerName: USPS_ROUTES_LAYER_NAME,
       styleContext: {
         getStrokeWidth: (context) => {
-          const zoom = sdk.Map.getZoomLevel();
+          const zoom = context.zoomLevel;
           let width = zoom < 3 ? 10 + 2 * zoom : 16;
           width += context.feature.properties.zIndex * 6;
           return width;
@@ -1439,29 +1440,29 @@
       ],
     });
 
-    sdk.Map.setLayerOpacity({ layerName: ZIPS_LAYER_NAME, opacity: _settings.layers.zips.opacity });
-    sdk.Map.setLayerOpacity({ layerName: COUNTIES_LAYER_NAME, opacity: _settings.layers.counties.opacity });
-    sdk.Map.setLayerOpacity({ layerName: STATES_LAYER_NAME, opacity: _settings.layers.states.opacity });
-    sdk.Map.setLayerOpacity({ layerName: TIME_ZONES_LAYER_NAME, opacity: _settings.layers.timeZones.opacity });
-    sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: _settings.uspsRoutes.opacity });
+    await sdk.Map.setLayerOpacity({ layerName: ZIPS_LAYER_NAME, opacity: _settings.layers.zips.opacity });
+    await sdk.Map.setLayerOpacity({ layerName: COUNTIES_LAYER_NAME, opacity: _settings.layers.counties.opacity });
+    await sdk.Map.setLayerOpacity({ layerName: STATES_LAYER_NAME, opacity: _settings.layers.states.opacity });
+    await sdk.Map.setLayerOpacity({ layerName: TIME_ZONES_LAYER_NAME, opacity: _settings.layers.timeZones.opacity });
+    await sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: _settings.uspsRoutes.opacity });
 
-    sdk.Map.setLayerVisibility({ layerName: ZIPS_LAYER_NAME, visibility: _settings.layers.zips.visible });
-    sdk.Map.setLayerVisibility({ layerName: COUNTIES_LAYER_NAME, visibility: _settings.layers.counties.visible });
-    sdk.Map.setLayerVisibility({ layerName: STATES_LAYER_NAME, visibility: _settings.layers.states.visible });
-    sdk.Map.setLayerVisibility({ layerName: TIME_ZONES_LAYER_NAME, visibility: _settings.layers.timeZones.visible });
+    await sdk.Map.setLayerVisibility({ layerName: ZIPS_LAYER_NAME, visibility: _settings.layers.zips.visible });
+    await sdk.Map.setLayerVisibility({ layerName: COUNTIES_LAYER_NAME, visibility: _settings.layers.counties.visible });
+    await sdk.Map.setLayerVisibility({ layerName: STATES_LAYER_NAME, visibility: _settings.layers.states.visible });
+    await sdk.Map.setLayerVisibility({ layerName: TIME_ZONES_LAYER_NAME, visibility: _settings.layers.timeZones.visible });
 
     sdk.Events.on({ eventName: 'wme-map-layer-added', eventHandler: ensureUspsRoutesZIndex });
     sdk.Events.on({ eventName: 'wme-map-layer-changed', eventHandler: ensureUspsRoutesZIndex });
     sdk.Events.on({ eventName: 'wme-map-layer-removed', eventHandler: ensureUspsRoutesZIndex });
 
-    sdk.LayerSwitcher.addLayerCheckbox({ name: statesLayerCheckboxName });
-    sdk.LayerSwitcher.setLayerCheckboxChecked({ name: statesLayerCheckboxName, isChecked: _settings.layers.states.visible });
-    sdk.LayerSwitcher.addLayerCheckbox({ name: countiesLayerCheckboxName });
-    sdk.LayerSwitcher.setLayerCheckboxChecked({ name: countiesLayerCheckboxName, isChecked: _settings.layers.counties.visible });
-    sdk.LayerSwitcher.addLayerCheckbox({ name: zipsLayerCheckboxName });
-    sdk.LayerSwitcher.setLayerCheckboxChecked({ name: zipsLayerCheckboxName, isChecked: _settings.layers.zips.visible });
-    sdk.LayerSwitcher.addLayerCheckbox({ name: timeZonesLayerCheckboxName });
-    sdk.LayerSwitcher.setLayerCheckboxChecked({ name: timeZonesLayerCheckboxName, isChecked: _settings.layers.timeZones.visible });
+    await sdk.LayerSwitcher.addLayerCheckbox({ name: statesLayerCheckboxName });
+    await sdk.LayerSwitcher.setLayerCheckboxChecked({ name: statesLayerCheckboxName, isChecked: _settings.layers.states.visible });
+    await sdk.LayerSwitcher.addLayerCheckbox({ name: countiesLayerCheckboxName });
+    await sdk.LayerSwitcher.setLayerCheckboxChecked({ name: countiesLayerCheckboxName, isChecked: _settings.layers.counties.visible });
+    await sdk.LayerSwitcher.addLayerCheckbox({ name: zipsLayerCheckboxName });
+    await sdk.LayerSwitcher.setLayerCheckboxChecked({ name: zipsLayerCheckboxName, isChecked: _settings.layers.zips.visible });
+    await sdk.LayerSwitcher.addLayerCheckbox({ name: timeZonesLayerCheckboxName });
+    await sdk.LayerSwitcher.setLayerCheckboxChecked({ name: timeZonesLayerCheckboxName, isChecked: _settings.layers.timeZones.visible });
 
     sdk.Events.on({ eventName: 'wme-layer-checkbox-toggled', eventHandler: onLayerCheckboxToggled });
     sdk.Events.on({ eventName: 'wme-map-move-end', eventHandler: onMapMoveEnd });
@@ -1615,13 +1616,17 @@
     return modLetters ? `${modLetters}+${keyChar}` : keyChar;
   }
 
+  let _lastShortcutSnapshot = '';
+
   /**
-   * Saves current shortcut assignments to localStorage.
-   * Called on beforeunload to persist user's shortcut choices.
+   * Reads shortcut assignments from the SDK into _settings and saves only when they changed.
+   * WME has no shortcut-change event, so this runs at init, after each USGB shortcut fires,
+   * The sync beforeunload handler persists the last gathered values.
    */
-  function saveShortcutSettings() {
+  async function saveShortcutsIfChanged() {
     try {
-      const allShortcuts = sdk.Shortcuts.getAllShortcuts();
+      const allShortcuts = await sdk.Shortcuts.getAllShortcuts();
+      // console.log('USGB-DEBUG sdk shortcuts:', JSON.stringify(allShortcuts.filter((s) => s.shortcutId.startsWith('usgb'))));
       allShortcuts.forEach((shortcut) => {
         if (_settings.shortcuts[shortcut.shortcutId]) {
           const sdkValue = shortcut.shortcutKeys;
@@ -1631,7 +1636,11 @@
         }
       });
 
-      saveSettings();
+      const snapshot = JSON.stringify(_settings.shortcuts);
+      if (snapshot !== _lastShortcutSnapshot) {
+        _lastShortcutSnapshot = snapshot;
+        saveSettings();
+      }
     } catch (e) {
       logError(`Failed to save shortcut settings: ${e.message}`);
     }
@@ -2559,21 +2568,21 @@
     });
 
     const visibilityToggle = card.querySelector('.usgb-visibility-toggle');
-    visibilityToggle.addEventListener('click', (e) => {
+    visibilityToggle.addEventListener('click', async (e) => {
       e.stopPropagation();
       const isActive = visibilityToggle.classList.contains('active');
       visibilityToggle.classList.toggle('active');
       _settings.layers[layerKey].visible = !isActive;
       saveSettings();
-      sdk.Map.setLayerVisibility({ layerName: LAYER_NAME_MAP[layerKey], visibility: !isActive });
+      await sdk.Map.setLayerVisibility({ layerName: LAYER_NAME_MAP[layerKey], visibility: !isActive });
 
       // Sync with SDK layer checkbox
-      sdk.LayerSwitcher.setLayerCheckboxChecked({
+      await sdk.LayerSwitcher.setLayerCheckboxChecked({
         name: LAYER_CHECKBOX_NAME_MAP[layerKey],
         isChecked: !isActive,
       });
 
-      fetchBoundaries();
+      await fetchBoundaries();
     });
 
     // Color pickers
@@ -2584,14 +2593,14 @@
       });
 
       const input = display.querySelector('input[type="color"]');
-      input.addEventListener('change', (e) => {
+      input.addEventListener('change', async (e) => {
         const setting = e.target.getAttribute('data-setting');
         const color = e.target.value;
         display.style.background = color;
         display.setAttribute('data-color', color);
         _settings.layers[layerKey][setting] = color;
         saveSettings();
-        sdk.Map.redrawLayer({ layerName: LAYER_NAME_MAP[layerKey] });
+        await sdk.Map.redrawLayer({ layerName: LAYER_NAME_MAP[layerKey] });
       });
     });
 
@@ -2601,22 +2610,22 @@
       // Initialize slider background
       updateSliderBackground(slider);
 
-      slider.addEventListener('input', (e) => {
+      slider.addEventListener('input', async (e) => {
         const value = parseFloat(e.target.value);
         updateSliderBackground(e.target);
         _settings.layers[layerKey].opacity = value;
-        sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[layerKey], opacity: value });
+        await sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[layerKey], opacity: value });
         saveSettings();
       });
 
       // Preset buttons
       card.querySelectorAll('.usgb-slider-preset').forEach((btn) => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           const value = parseFloat(btn.getAttribute('data-value'));
           slider.value = value;
           updateSliderBackground(slider);
           _settings.layers[layerKey].opacity = value;
-          sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[layerKey], opacity: value });
+          await sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[layerKey], opacity: value });
           saveSettings();
         });
       });
@@ -2625,20 +2634,20 @@
     // Dynamic labels checkbox
     const dynamicLabelsCheckbox = card.querySelector('input[data-setting="dynamicLabels"]');
     if (dynamicLabelsCheckbox) {
-      dynamicLabelsCheckbox.addEventListener('change', (e) => {
+      dynamicLabelsCheckbox.addEventListener('change', async (e) => {
         _settings.layers[layerKey].dynamicLabels = e.target.checked;
         saveSettings();
-        fetchBoundaries();
+        await fetchBoundaries();
       });
     }
 
     // Min zoom input
     const minZoomInput = card.querySelector('input[data-setting="minZoom"]');
     if (minZoomInput) {
-      minZoomInput.addEventListener('change', (e) => {
+      minZoomInput.addEventListener('change', async (e) => {
         _settings.layers[layerKey].minZoom = parseInt(e.target.value, 10);
         saveSettings();
-        fetchBoundaries();
+        await fetchBoundaries();
       });
     }
 
@@ -2657,7 +2666,7 @@
    *
    * @param {string} presetName - Name of preset to apply
    */
-  function applyPreset(presetName) {
+  async function applyPreset(presetName) {
     const presets = {
       'high-contrast': {
         message: 'Applied high contrast colors for better visibility',
@@ -2699,17 +2708,17 @@
 
     const preset = presets[presetName];
     if (preset) {
-      Object.keys(preset.settings).forEach((layerKey) => {
+      for (const layerKey of Object.keys(preset.settings)) {
         Object.keys(preset.settings[layerKey]).forEach((setting) => {
           _settings.layers[layerKey][setting] = preset.settings[layerKey][setting];
         });
         if (preset.settings[layerKey].opacity !== undefined) {
-          sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[layerKey], opacity: preset.settings[layerKey].opacity });
+          await sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[layerKey], opacity: preset.settings[layerKey].opacity });
         }
         if (preset.settings[layerKey].color !== undefined) {
-          sdk.Map.redrawLayer({ layerName: LAYER_NAME_MAP[layerKey] });
+          await sdk.Map.redrawLayer({ layerName: LAYER_NAME_MAP[layerKey] });
         }
-      });
+      }
       saveSettings();
 
       // Refresh the UI to show new values
@@ -2781,8 +2790,8 @@
       </div>
     `;
     presetsDiv.querySelectorAll('.usgb-preset-chip').forEach((chip) => {
-      chip.addEventListener('click', () => {
-        applyPreset(chip.getAttribute('data-preset'));
+      chip.addEventListener('click', async () => {
+        await applyPreset(chip.getAttribute('data-preset'));
       });
     });
     container.appendChild(presetsDiv);
@@ -2854,11 +2863,11 @@
     // Initialize slider background
     updateSliderBackground(uspsOpacitySlider);
 
-    uspsOpacitySlider.addEventListener('input', (e) => {
+    uspsOpacitySlider.addEventListener('input', async (e) => {
       const value = parseFloat(e.target.value);
       updateSliderBackground(e.target);
       _settings.uspsRoutes.opacity = value;
-      sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: value });
+      await sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: value });
       saveSettings();
     });
 
@@ -2877,19 +2886,19 @@
       </button>
     `;
 
-    footerActions.querySelector('#usgb-reset-all').addEventListener('click', () => {
+    footerActions.querySelector('#usgb-reset-all').addEventListener('click', async () => {
       if (confirm('Are you sure you want to reset all settings to defaults?')) {
         _settings = getDefaultSettings();
         saveSettings();
 
         // Apply default opacities
-        Object.keys(_settings.layers).forEach((layerKey) => {
-          sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[layerKey], opacity: _settings.layers[layerKey].opacity });
-          sdk.Map.redrawLayer({ layerName: LAYER_NAME_MAP[layerKey] });
-        });
-        sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: _settings.uspsRoutes.opacity });
+        for (const layerKey of Object.keys(_settings.layers)) {
+          await sdk.Map.setLayerOpacity({ layerName: LAYER_NAME_MAP[layerKey], opacity: _settings.layers[layerKey].opacity });
+          await sdk.Map.redrawLayer({ layerName: LAYER_NAME_MAP[layerKey] });
+        }
+        await sdk.Map.setLayerOpacity({ layerName: USPS_ROUTES_LAYER_NAME, opacity: _settings.uspsRoutes.opacity });
 
-        fetchBoundaries();
+        await fetchBoundaries();
 
         // Rebuild UI
         setTimeout(() => {
@@ -2946,14 +2955,14 @@
    * @param {string} layerKey - Layer identifier ('zips', 'counties', 'states', 'timeZones')
    * @fires fetchBoundaries - Triggers boundary re-fetch
    */
-  function toggleLayerVisibility(layerKey) {
+  async function toggleLayerVisibility(layerKey) {
     const newVisibility = !_settings.layers[layerKey].visible;
     _settings.layers[layerKey].visible = newVisibility;
     saveSettings();
-    sdk.Map.setLayerVisibility({ layerName: LAYER_NAME_MAP[layerKey], visibility: newVisibility });
+    await sdk.Map.setLayerVisibility({ layerName: LAYER_NAME_MAP[layerKey], visibility: newVisibility });
 
     // Sync with SDK layer checkbox
-    sdk.LayerSwitcher.setLayerCheckboxChecked({
+    await sdk.LayerSwitcher.setLayerCheckboxChecked({
       name: LAYER_CHECKBOX_NAME_MAP[layerKey],
       isChecked: newVisibility,
     });
@@ -2971,15 +2980,16 @@
       }
     }
 
-    fetchBoundaries();
+    await fetchBoundaries();
   }
 
   /**
    * Registers keyboard shortcuts with the SDK.
    * Uses stored shortcut values (default: null) so users can assign their own.
-   * Handles duplicate key conflicts by resetting to no shortcut.
+   * Checks for key conflicts with another script before registering, and clears the
+   * stored keys for any shortcut that conflicts so the user can reassign it.
    */
-  function registerShortcuts() {
+  async function registerShortcuts() {
     const shortcuts = [
       { id: 'usgb-toggle-zips', description: 'Toggle ZIP Codes layer', handler: () => toggleLayerVisibility('zips') },
       { id: 'usgb-toggle-counties', description: 'Toggle Counties layer', handler: () => toggleLayerVisibility('counties') },
@@ -2989,40 +2999,33 @@
     ];
 
     let needsSave = false;
+    const withSave = (handler) => async () => {
+      await handler();
+      await saveShortcutsIfChanged();
+    };
 
-    shortcuts.forEach(({ id, description, handler }) => {
+    for (const { id, description, handler } of shortcuts) {
+      // SDK expects combo format, not raw format
+      let comboKeys = _settings.shortcuts[id]?.combo || null;
+
+      if (comboKeys && (await sdk.Shortcuts.areShortcutKeysInUse({ shortcutKeys: comboKeys }))) {
+        logError(`Shortcut keys "${comboKeys}" are already in use by another script. "${description}" will not be set with these keys.`);
+        comboKeys = null;
+        _settings.shortcuts[id] = { raw: null, combo: null };
+        needsSave = true;
+      }
+
       try {
-        // SDK expects combo format, not raw format
-        const comboKeys = _settings.shortcuts[id]?.combo || null;
-
-        sdk.Shortcuts.createShortcut({
+        await sdk.Shortcuts.createShortcut({
           shortcutId: id,
-          shortcutKeys: comboKeys, // Use combo format from storage (null by default)
+          shortcutKeys: comboKeys,
           description,
-          callback: handler,
+          callback: withSave(handler),
         });
       } catch (e) {
-        // Handle duplicate key conflicts by resetting to no shortcut
-        if (e.message && e.message.includes('already in use')) {
-          _settings.shortcuts[id] = { raw: null, combo: null };
-          needsSave = true;
-
-          // Try to register again with null (no shortcut)
-          try {
-            sdk.Shortcuts.createShortcut({
-              shortcutId: id,
-              shortcutKeys: null,
-              description,
-              callback: handler,
-            });
-          } catch (retryError) {
-            logError(`Failed to register ${id} even with null keys: ${retryError.message}`);
-          }
-        } else {
-          logError(`Failed to register ${id}: ${e.message}`);
-        }
+        logError(`Failed to register ${id}: ${e.message}`);
       }
-    });
+    }
 
     // Save settings if any duplicates were reset
     if (needsSave) {
@@ -3030,8 +3033,8 @@
     }
   }
 
-  // Save shortcut settings on page unload
-  window.addEventListener('beforeunload', saveShortcutSettings);
+  // Persist settings on page unload. Must be sync: async handlers can't finish during unload.
+  window.addEventListener('beforeunload', saveSettings);
 
   /**
    * Main initialization function for the script.
@@ -3045,13 +3048,14 @@
    *
    * @see loadSettings, registerShortcuts, initLayers, initTab, fetchBoundaries, showScriptInfoAlert
    */
-  function init() {
+  async function init() {
     loadSettings();
-    registerShortcuts();
-    initLayers();
+    await registerShortcuts();
+    await saveShortcutsIfChanged();
+    await initLayers();
     initTab();
     showScriptInfoAlert();
-    fetchBoundaries();
+    await fetchBoundaries();
     log('Modern UI Initialized.');
   }
 
@@ -3061,5 +3065,5 @@
     shortcuts: () => _settings.shortcuts,
   };
 
-  init();
+  await init();
 })();
